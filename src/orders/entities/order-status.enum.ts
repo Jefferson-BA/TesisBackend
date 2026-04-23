@@ -11,11 +11,26 @@ import {
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
 import { OrderItem } from './order-item.entity';
-import { OrderStatus, PaymentMethod } from '../enums/order.enums';
 
+// Transformer para evitar que el decimal llegue como string
 export class ColumnNumericTransformer {
   to(data: number): number { return data; }
   from(data: string): number { return parseFloat(data); }
+}
+
+export enum OrderStatus {
+  PENDING = 'pending',
+  PAID = 'paid',
+  SHIPPED = 'shipped',
+  DELIVERED = 'delivered',
+  CANCELLED = 'cancelled',
+}
+
+export enum PaymentMethod {
+  CARD = 'card',
+  YAPE = 'yape',
+  PLIN = 'plin',
+  CASH = 'cash',
 }
 
 @Entity('orders')
@@ -23,8 +38,11 @@ export class Order {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @Index()
-  @ManyToOne(() => User, (user) => user.orders, { nullable: false, onDelete: 'RESTRICT' })
+  @Index() 
+  @ManyToOne(() => User, (user) => user.orders, { 
+    nullable: false, 
+    onDelete: 'RESTRICT' 
+  })
   @JoinColumn({ name: 'userId' })
   user!: User;
 
@@ -44,7 +62,7 @@ export class Order {
   shippingAddress!: string;
 
   @Column({ length: 100, nullable: true })
-  city?: string;
+  city?: string; 
 
   @Column({ length: 20, nullable: true })
   postalCode?: string;
@@ -53,16 +71,26 @@ export class Order {
   phone?: string;
 
   @Index()
-  @Column({ type: 'enum', enum: OrderStatus, default: OrderStatus.PENDING })
+  @Column({
+    type: 'enum',
+    enum: OrderStatus,
+    default: OrderStatus.PENDING,
+  })
   status!: OrderStatus;
 
-  @Column({ type: 'enum', enum: PaymentMethod, default: PaymentMethod.CARD })
+  @Column({
+    type: 'enum',
+    enum: PaymentMethod,
+    default: PaymentMethod.CARD,
+  })
   paymentMethod!: PaymentMethod;
 
-  @OneToMany(() => OrderItem, (item) => item.order, { cascade: true })
+  @OneToMany(() => OrderItem, (item) => item.order, {
+    cascade: true, 
+  })
   items!: OrderItem[];
 
-  @CreateDateColumn({ type: 'timestamptz' })
+  @CreateDateColumn({ type: 'timestamptz' }) 
   createdAt!: Date;
 
   @UpdateDateColumn({ type: 'timestamptz' })
