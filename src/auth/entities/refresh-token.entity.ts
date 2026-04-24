@@ -11,16 +11,16 @@ import { User } from '../../users/entities/user.entity';
 export class RefreshToken {
 
   @PrimaryGeneratedColumn()
-  id: number;
+  id!: number;
 
   @Column({ type: 'text' })
-  token: string;
+  token!: string;
 
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
-  user: User;
+  user!: User;
 
   @Column({ type: 'timestamp' })
-  expiresAt: Date;
+  expiresAt!: Date;
 
   @Column({ nullable: true })
   ipAddress?: string;
@@ -29,5 +29,5 @@ export class RefreshToken {
   userAgent?: string;
 
   @CreateDateColumn()
-  createdAt: Date;
+  createdAt!: Date;
 }
