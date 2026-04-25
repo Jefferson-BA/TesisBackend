@@ -16,21 +16,29 @@ import { AdvertisementsModule } from './advertisements/advertisements.module';
 
 @Module({
   imports: [
+    // 1. Cargamos las variables de entorno
     ConfigModule.forRoot({
       isGlobal: true,
     }),
 
+    // 2. Conexión a la base de datos
     TypeOrmModule.forRoot({
-      type: 'postgres',
-      host: process.env.PS_DBHOST,
-      port: Number(process.env.PS_DBPORT),
-      username: process.env.PS_DBUSERNAME,
-      password: process.env.PS_DBPASSWORD,
-      database: process.env.PS_DATABASE,
-      entities: [__dirname + '/**/*.entity{.ts,.js}'],
+      type: process.env.DB_TYPE as any,
+      host: process.env.DB_HOST,
+      port: +(process.env.DB_PORT || 5432), 
+      username: process.env.DB_USERNAME,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME,
+
+      // 3. Carga automática de todas las entidades que creamos
       autoLoadEntities: true,
-      synchronize: process.env.TYPEORM_SYNC === 'true',
-      logging: true,
+
+      // 4. MIGRACIÓN AUTOMÁTICA (Sincronización)
+      // En desarrollo usamos 'synchronize: true' para que TypeORM
+      // cree las tablas automáticamente al detectar tus entidades.
+      synchronize: true,
+
+      // En producción esto DEBE ser false y usarse migraciones manuales.
     }),
 
     AuthModule,
@@ -43,4 +51,4 @@ import { AdvertisementsModule } from './advertisements/advertisements.module';
     AdvertisementsModule,
   ],
 })
-export class AppModule {}
+export class AppModule { }

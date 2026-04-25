@@ -1,7 +1,7 @@
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { Order } from './order.entity';
 import { Product } from '../../products/entities/product.entity';
-import { ColumnNumericTransformer } from '../entities/order.entity'; 
+import { ColumnNumericTransformer } from '../../common/utils/column-numeric.transformer';
 
 @Entity('order_items')
 export class OrderItem {
@@ -25,11 +25,11 @@ export class OrderItem {
   @Column()
   quantity!: number;
 
-  @Column({ 
-    type: 'decimal', 
+  @Column({
+    type: 'numeric',
     precision: 10, 
-    scale: 2,
-    transformer: new ColumnNumericTransformer() 
+    scale: 2,      
+    transformer: new ColumnNumericTransformer(),
   })
-  price!: number;
+  price!: number; 
 }

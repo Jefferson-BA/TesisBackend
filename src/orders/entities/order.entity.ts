@@ -12,11 +12,7 @@ import {
 import { User } from '../../users/entities/user.entity';
 import { OrderItem } from './order-item.entity';
 import { OrderStatus, PaymentMethod } from '../enums/order.enums';
-
-export class ColumnNumericTransformer {
-  to(data: number): number { return data; }
-  from(data: string): number { return parseFloat(data); }
-}
+import { ColumnNumericTransformer } from '../../common/utils/column-numeric.transformer';
 
 @Entity('orders')
 export class Order {
@@ -31,14 +27,8 @@ export class Order {
   @Column()
   userId!: number;
 
-  @Column({ 
-    type: 'decimal', 
-    precision: 12, 
-    scale: 2, 
-    default: 0,
-    transformer: new ColumnNumericTransformer() 
-  })
-  totalAmount!: number;
+  // Si tenías una columna de "total" que usara el transformador, iría aquí. 
+  // Por ahora la dejamos como en tu código original.
 
   @Column({ length: 255 })
   shippingAddress!: string;
