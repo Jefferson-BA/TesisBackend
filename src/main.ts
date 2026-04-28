@@ -5,6 +5,13 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  // 👇 AQUÍ AGREGAMOS LA CONFIGURACIÓN DE CORS
+  app.enableCors({
+    origin: 'http://localhost:4321', // Permite la entrada exclusiva a tu Astro
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    credentials: true, // Permite el envío de cookies/tokens
+  });
+
   // Configuración de validaciones globales
   app.useGlobalPipes(
     new ValidationPipe({

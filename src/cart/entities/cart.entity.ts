@@ -14,20 +14,20 @@ import { CartItem } from '../../cart/entities/cart-item.entity';
 export class Cart {
 
   @PrimaryGeneratedColumn()
-  id: number;
+  id!: number;
 
   @OneToOne(() => User, { onDelete: 'CASCADE' })
   @JoinColumn()
-  user: User;
+  user!: User;
 
   @OneToMany(() => CartItem, (item) => item.cart, {
     cascade: true,
   })
-  items: CartItem[];
+  items!: CartItem[];
 
   @CreateDateColumn()
-  createdAt: Date;
+  createdAt!: Date;
 
   @UpdateDateColumn()
-  updatedAt: Date;
+  updatedAt!: Date;
 }
