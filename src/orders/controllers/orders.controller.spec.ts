@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { OrdersController } from './orders.controller';
-import { OrdersService } from './orders.service';
+import { OrdersService } from '../orders.service';
 
 // 1. Creamos un "Doble" (Mock) del servicio real
 const mockOrdersService = {
