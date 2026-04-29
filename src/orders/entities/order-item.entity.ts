@@ -19,8 +19,9 @@ export class OrderItem {
   @JoinColumn({ name: 'productId' })
   product!: Product;
 
-  @Column()
-  productId!: number;
+  // 👇 AQUÍ ESTABA EL ERROR. Ahora es un string tipo uuid.
+  @Column({ type: 'uuid' })
+  productId!: string;
 
   @Column()
   quantity!: number;
