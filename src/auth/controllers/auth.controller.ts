@@ -3,6 +3,8 @@ import { AuthGuard } from '@nestjs/passport'; // 👈 Importamos al "guardia"
 import { AuthService } from '../services/auth.service';
 import { SignupDto } from '../dto/signup.dto';
 import { LoginDto } from '../dto/login.dto';
+import { Roles } from '../decorators/roles.decorator';
+import { RolesGuard } from '../guards/roles.guard';
 @Controller('auth')
 export class AuthController {
     constructor(private readonly authService: AuthService) { }
@@ -27,6 +29,14 @@ export class AuthController {
         return {
             message: '¡Pase VIP aceptado! Bienvenido a tu perfil privado.',
             user: req.user, // Muestra el ID, email y rol que extrajimos del token
+        };
+    }
+    @Get('admin-only')
+    @UseGuards(AuthGuard('jwt'), RolesGuard) // 👈 Primero validamos el token, luego el rol
+    @Roles('ADMIN', 'SUPERADMIN')            // 👈 ¡La magia! Solo ellos pasan (usa tu enum si lo prefieres)
+    getAdminData() {
+        return {
+            message: '¡Bienvenido Jefe! Esta información es top secret.',
         };
     }
 }
