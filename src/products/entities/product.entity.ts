@@ -1,49 +1,34 @@
-import {
-  Column,
-  Entity,
-  PrimaryGeneratedColumn,
-  ManyToOne,
-  CreateDateColumn,
-  UpdateDateColumn,
-} from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
 import { Category } from '../../categories/entities/category.entity';
 
 @Entity('products')
 export class Product {
+  @PrimaryGeneratedColumn('uuid')
+  id!: string;
 
-  @PrimaryGeneratedColumn()
-  id: number;
+  @Column({ type: 'varchar', length: 150, unique: true })
+  name!: string;
 
-  @Column({ length: 150 })
-  name: string;
+  @Column({ type: 'text', nullable: true })
+  description?: string;
 
-  @Column({ type: 'text' })
-  description: string;
-
-  @Column({ unique: true })
-  sku: string; // Código único del producto
-
-  @Column({ type: 'decimal', precision: 10, scale: 2 })
-  price: number;
+  @Column({ type: 'decimal', precision: 10, scale: 2 }) // Ej: 99999999.99
+  price!: number;
 
   @Column({ type: 'int', default: 0 })
-  stock: number;
+  stock!: number;
 
-  @Column({ nullable: true })
-  imageUrl?: string;
+  @Column({ type: 'varchar', nullable: true })
+  imageUrl?: string; // Súper útil para un e-commerce
 
-  @Column({ default: true })
-  isActive: boolean;
+  // 👇 Aquí está la relación M:1. Muchos productos pertenecen a 1 categoría.
+  @ManyToOne(() => Category, (category) => category.products, { eager: true })
+  @JoinColumn({ name: 'category_id' }) // Esto crea la columna category_id en PostgreSQL
+  category!: Category;
 
-  @ManyToOne(() => Category, (category) => category.products, {
-    eager: true,
-    nullable: false,
-  })
-  category: Category;
+  @CreateDateColumn({ name: 'created_at' })
+  createdAt!: Date;
 
-  @CreateDateColumn()
-  createdAt: Date;
-
-  @UpdateDateColumn()
-  updatedAt: Date;
+  @UpdateDateColumn({ name: 'updated_at' })
+  updatedAt!: Date;
 }
