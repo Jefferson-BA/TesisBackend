@@ -1,23 +1,23 @@
-import {
-  Column,
-  Entity,
-  PrimaryGeneratedColumn,
-  OneToMany,
-} from 'typeorm';
-import { Product } from '../../products/entities/product.entity';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
+import { Product } from '../../products/entities/product.entity'; 
 
 @Entity('categories')
 export class Category {
+  @PrimaryGeneratedColumn('uuid')
+  id!: string;
 
-  @PrimaryGeneratedColumn()
-  id: number;
+  @Column({ type: 'varchar', length: 100, unique: true })
+  name!: string;
 
-  @Column({ unique: true })
-  name: string;
-
-  @Column({ nullable: true })
+  @Column({ type: 'text', nullable: true })
   description?: string;
 
   @OneToMany(() => Product, (product) => product.category)
-  products: Product[];
+  products!: Product[];
+
+  @CreateDateColumn({ name: 'created_at' })
+  createdAt!: Date;
+
+  @UpdateDateColumn({ name: 'updated_at' })
+  updatedAt!: Date;
 }
