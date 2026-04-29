@@ -5,10 +5,12 @@ import { CreateProductDto } from '../dto/create-product.dto';
 import { UpdateProductDto } from '../dto/update-product.dto';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { QueryProductDto } from '../dto/query-product.dto';
+import { Query } from '@nestjs/common';
 
 @Controller('products')
 export class ProductsController {
-  constructor(private readonly productsService: ProductsService) {}
+  constructor(private readonly productsService: ProductsService) { }
 
   @Post()
   @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -18,8 +20,8 @@ export class ProductsController {
   }
 
   @Get() // 🔓 Público
-  findAll() {
-    return this.productsService.findAll();
+  findAll(@Query() query: QueryProductDto) {
+    return this.productsService.findAll(query);
   }
 
   @Get(':id') // 🔓 Público

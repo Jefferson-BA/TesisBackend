@@ -1,8 +1,8 @@
-import { 
-  Injectable, 
-  NotFoundException, 
-  BadRequestException, 
-  InternalServerErrorException 
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  InternalServerErrorException
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, DataSource } from 'typeorm';
@@ -20,8 +20,8 @@ export class OrdersService {
     @InjectRepository(Product)
     private readonly productRepository: Repository<Product>,
     // Inyectamos DataSource para manejar transacciones manuales seguras
-    private readonly dataSource: DataSource, 
-  ) {}
+    private readonly dataSource: DataSource,
+  ) { }
 
   async create(createOrderDto: CreateOrderDto, userId: number) {
     const productIds = createOrderDto.items.map((item) => item.productId);
@@ -69,7 +69,7 @@ export class OrdersService {
           quantity: itemDto.quantity,
           price: itemPrice,
         });
-        
+
         orderItems.push(orderItem);
       }
 
@@ -89,13 +89,13 @@ export class OrdersService {
 
       // 8. Confirmar la transacción (Si todo salió bien, aplica los cambios reales)
       await queryRunner.commitTransaction();
-      
+
       return savedOrder;
 
     } catch (error) {
       // 9. Rollback de emergencia: Si algo falla, deshace TODO (incluso el stock)
       await queryRunner.rollbackTransaction();
-      
+
       if (error instanceof BadRequestException) {
         throw error;
       }
@@ -134,9 +134,9 @@ export class OrdersService {
     });
 
     if (!order) throw new NotFoundException(`La orden #${id} no existe.`);
-    
+
     // Aquí (en un futuro) podrías añadir lógica para "devolver el stock" si la orden se CANCELA
-    
+
     return await this.orderRepository.save(order);
   }
 }

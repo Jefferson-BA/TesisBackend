@@ -27,8 +27,14 @@ export class Order {
   @Column()
   userId!: number;
 
-  // Si tenías una columna de "total" que usara el transformador, iría aquí. 
-  // Por ahora la dejamos como en tu código original.
+  // 👇 AGREGADO: Necesario porque tu servicio calcula y guarda el total
+  @Column({
+    type: 'numeric',
+    precision: 10,
+    scale: 2,
+    transformer: new ColumnNumericTransformer(),
+  })
+  totalAmount!: number;
 
   @Column({ length: 255 })
   shippingAddress!: string;
