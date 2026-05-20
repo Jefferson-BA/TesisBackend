@@ -2,15 +2,17 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
-  InternalServerErrorException
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, DataSource } from 'typeorm';
+import { Repository, In, DataSource, EntityManager } from 'typeorm';
+
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
 import { Order } from './entities/order.entity';
 import { Product } from '../products/entities/product.entity';
 import { OrderItem } from './entities/order-item.entity';
+import { MailService } from '../mail/mail.service'; // No olvidemos tu servicio de correos
 
 @Injectable()
 export class OrdersService {
@@ -19,64 +21,41 @@ export class OrdersService {
     private readonly orderRepository: Repository<Order>,
     @InjectRepository(Product)
     private readonly productRepository: Repository<Product>,
-    // Inyectamos DataSource para manejar transacciones manuales seguras
     private readonly dataSource: DataSource,
-  ) { }
+    private readonly mailService: MailService,
+  ) {}
 
   async create(createOrderDto: CreateOrderDto, userId: number) {
     const productIds = createOrderDto.items.map((item) => item.productId);
-
-    // 1. Iniciamos el QueryRunner para la transacción
     const queryRunner = this.dataSource.createQueryRunner();
+
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
     try {
-      // 2. Buscar productos DENTRO de la transacción para asegurar consistencia
+      // 1. Bloqueo Pesimista (Pessimistic Read/Write): 
+      // Vital para E-commerce. Bloquea las filas de estos productos momentáneamente
+      // para que si 2 personas compran el último stock al mismo tiempo, uno espere al otro.
       const products = await queryRunner.manager.find(Product, {
         where: { id: In(productIds) },
-        // Opcional (Pro): lock: { mode: 'pessimistic_write' } para evitar concurrencia
+        lock: { mode: 'pessimistic_write' }, 
       });
 
       if (products.length !== productIds.length) {
         throw new BadRequestException('Algunos productos de la orden no existen.');
       }
 
-      let totalAmount = 0;
-      const orderItems: OrderItem[] = [];
+      // 2. Delegamos la lógica matemática y de validación a un método privado
+      const { orderItems, totalAmount } = this.processOrderItems(
+        createOrderDto.items,
+        products,
+        queryRunner.manager,
+      );
 
-      // 3. Preparar items y VALIDAR STOCK
-      for (const itemDto of createOrderDto.items) {
-        const product = products.find((p) => p.id === itemDto.productId);
-
-        // LÓGICA DE STOCK: Validamos si hay suficiente cantidad
-        // (Asumiendo que tu entidad Product tiene propiedades 'stock' y 'name')
-        if (product!.stock < itemDto.quantity) {
-          throw new BadRequestException(
-            `Stock insuficiente para el producto: ${product!.name}. Stock actual: ${product!.stock}`,
-          );
-        }
-
-        // 4. Descontamos el stock en memoria
-        product!.stock -= itemDto.quantity;
-
-        const itemPrice = product!.price;
-        totalAmount += itemPrice * itemDto.quantity;
-
-        // Creamos la instancia del item
-        const orderItem = queryRunner.manager.create(OrderItem, {
-          productId: product!.id,
-          quantity: itemDto.quantity,
-          price: itemPrice,
-        });
-
-        orderItems.push(orderItem);
-      }
-
-      // 5. Guardar los productos con su NUEVO STOCK en la base de datos
+      // 3. Guardar nuevo stock (los objetos 'products' ya fueron modificados en memoria por processOrderItems)
       await queryRunner.manager.save(Product, products);
 
-      // 6. Crear la orden principal
+      // 4. Crear y guardar orden
       const order = queryRunner.manager.create(Order, {
         ...createOrderDto,
         userId,
@@ -84,29 +63,83 @@ export class OrdersService {
         items: orderItems,
       });
 
-      // 7. Guardar la orden y sus items (por cascade)
       const savedOrder = await queryRunner.manager.save(Order, order);
 
-      // 8. Confirmar la transacción (Si todo salió bien, aplica los cambios reales)
+      // 5. Confirmar transacción
       await queryRunner.commitTransaction();
+
+      // 6. Disparar correo de forma asíncrona
+      this.mailService.sendOrderConfirmation(
+        'correo-de-prueba@gmail.com', // Cambia por el correo real del usuario o el tuyo
+        savedOrder.id,
+        savedOrder.totalAmount,
+      );
 
       return savedOrder;
 
     } catch (error) {
-      // 9. Rollback de emergencia: Si algo falla, deshace TODO (incluso el stock)
       await queryRunner.rollbackTransaction();
 
-      if (error instanceof BadRequestException) {
+      if (error instanceof BadRequestException || error instanceof NotFoundException) {
         throw error;
       }
-      // Loggear el error real internamente y lanzar uno genérico
       throw new InternalServerErrorException('Error procesando la orden de compra');
     } finally {
-      // 10. Liberar el QueryRunner para no saturar la memoria
       await queryRunner.release();
     }
   }
 
+  // ====================================================================
+  // MÉTODOS PRIVADOS (Separación de Responsabilidades)
+  // Si esta lógica crece más, la puedes mover a src/orders/utils/
+  // ====================================================================
+  private processOrderItems(
+    itemsDto: CreateOrderDto['items'],
+    products: Product[],
+    manager: EntityManager,
+  ): { orderItems: OrderItem[]; totalAmount: number } {
+    
+    // Optimización: O(1) en las búsquedas
+    const productsMap = new Map(products.map((product) => [product.id, product]));
+    
+    let totalAmount = 0;
+    const orderItems: OrderItem[] = [];
+
+    for (const itemDto of itemsDto) {
+      const product = productsMap.get(itemDto.productId);
+
+      if (!product) {
+        throw new BadRequestException(`Producto con ID ${itemDto.productId} no encontrado.`);
+      }
+
+      if (product.stock < itemDto.quantity) {
+        throw new BadRequestException(
+          `Stock insuficiente para: ${product.name}. Stock actual: ${product.stock}`,
+        );
+      }
+
+      // Descontar stock en memoria
+      product.stock -= itemDto.quantity;
+
+      const itemPrice = product.price;
+      totalAmount += itemPrice * itemDto.quantity;
+
+      // Generar el ítem
+      const orderItem = manager.create(OrderItem, {
+        productId: product.id,
+        quantity: itemDto.quantity,
+        price: itemPrice,
+      });
+
+      orderItems.push(orderItem);
+    }
+
+    return { orderItems, totalAmount };
+  }
+
+  // ====================================================================
+  // MÉTODOS PÚBLICOS DE LECTURA
+  // ====================================================================
   async findAll(userId: number) {
     return await this.orderRepository.find({
       where: { userId },
@@ -134,8 +167,6 @@ export class OrdersService {
     });
 
     if (!order) throw new NotFoundException(`La orden #${id} no existe.`);
-
-    // Aquí (en un futuro) podrías añadir lógica para "devolver el stock" si la orden se CANCELA
 
     return await this.orderRepository.save(order);
   }
