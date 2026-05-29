@@ -12,6 +12,7 @@ import { CartModule } from './cart/cart.module';
 import { OrdersModule } from './orders/orders.module';
 import { RolesModule } from './roles/roles.module';
 import { AdvertisementsModule } from './advertisements/advertisements.module';
+import { ReservationsModule } from './reservations/reservations.module';
 
 
 @Module({
@@ -49,6 +50,7 @@ import { AdvertisementsModule } from './advertisements/advertisements.module';
     OrdersModule,
     RolesModule,
     AdvertisementsModule,
+    ReservationsModule,
   ],
 })
 export class AppModule { }
