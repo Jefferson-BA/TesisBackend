@@ -23,7 +23,7 @@ class ReservationItemDto {
 export class CreateReservationDto {
   @IsDateString()
   @IsNotEmpty()
-  eventDate!: Date;
+  eventDate!: string;
 
   @IsString()
   @IsNotEmpty()

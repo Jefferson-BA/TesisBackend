@@ -2,7 +2,7 @@ import {
   Controller, Get, Post, Body, Patch, Param, ParseIntPipe, Req, UseGuards 
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import { OrdersService } from '../orders.service';
+import { OrdersService } from '../service/orders.service';
 import { CreateOrderDto } from '../dto/create-order.dto';
 import { UpdateOrderDto } from '../dto/update-order.dto';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -17,8 +17,7 @@ export class OrdersController {
   create(@Body() createOrderDto: CreateOrderDto, @Req() req: any) {
     // Tomamos el ID real del usuario desde el Token JWT
     const userId = req.user.id; 
-    return this.ordersService.create(createOrderDto, userId);
-  }
+return this.ordersService.createOrderFromCart(userId, createOrderDto);  }
 
   @Get()
   findAll(@Req() req: any) {
