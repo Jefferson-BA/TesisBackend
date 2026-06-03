@@ -3,7 +3,7 @@ import { User } from '../../users/entities/user.entity';
 import { ReservationItem } from '../entities/reservation-item.entity';
 import { ReservationStatus } from '../enums/reservations.enums';
 import { ColumnNumericTransformer } from '../../common/utils/column-numeric.transformer';
-
+import { Order } from '../../orders/entities/order.entity';
 @Entity('reservations')
 export class Reservation {
   @PrimaryGeneratedColumn()
@@ -33,7 +33,12 @@ export class Reservation {
 
   @Column({ type: 'text', nullable: true })
   additionalNotes?: string; // Detalles extra (ej: "5 invitados son vegetarianos")
+  @Column({ nullable: true })
+  orderId?: number; // 👈 Columna física en la base de datos
 
+  @ManyToOne(() => Order, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'orderId' })
+  order?: Order; // 👈 Relación para hacer el Join
   @Column({
     type: 'numeric',
     precision: 10,

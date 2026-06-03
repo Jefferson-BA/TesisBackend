@@ -4,11 +4,12 @@ import { Reservation } from '../entities/reservation.entity';
 import { ReservationItem } from '../entities/reservation-item.entity';
 import { Product } from '../../products/entities/product.entity';
 import { CreateReservationDto } from '../dto/create-reservation.dto';
+import { UpdateReservationDto } from '../dto/update-reservation.dto';
 import { ReservationStatus } from '../enums/reservations.enums';
 
 @Injectable()
 export class ReservationsService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(private readonly dataSource: DataSource) { }
 
   async createReservation(userId: number, dto: CreateReservationDto) {
     const queryRunner = this.dataSource.createQueryRunner();
@@ -59,16 +60,54 @@ export class ReservationsService {
     }
   }
 
-  // Lógica para que el Admin apruebe el evento y habilite la pasarela de pago
+  // 🟢 FILTRADO PARA EL CLIENTE: Solo ve las suyas
+  async findAll(userId: number): Promise<Reservation[]> {
+    return await this.dataSource.getRepository(Reservation).find({
+      where: { userId },
+      relations: ['items'],
+      order: { id: 'DESC' }
+    });
+  }
+
+// 🟢 PARA EL ADMIN: Ve absolutamente todo con relaciones pobladas
+  async findAllAdmin(): Promise<Reservation[]> {
+    return await this.dataSource.getRepository(Reservation).find({ 
+      // 👇 Ahora sí podemos incluir 'user' y 'order' de forma segura
+      relations: ['items', 'user', 'order'], 
+      order: { id: 'DESC' }
+    });
+  }
+
+  // 🟢 NUEVO: Actualizar cualquier campo de la reserva (incluyendo status)
+  async update(id: number, updateReservationDto: UpdateReservationDto) {
+    const reservationRepository = this.dataSource.getRepository(Reservation);
+    const reservation = await reservationRepository.findOneBy({ id });
+
+    if (!reservation) {
+      throw new NotFoundException(`La reserva con ID ${id} no existe.`);
+    }
+
+    Object.assign(reservation, updateReservationDto);
+    return await reservationRepository.save(reservation);
+  }
+
+  async remove(id: number) {
+    const reservationRepository = this.dataSource.getRepository(Reservation);
+    const result = await reservationRepository.delete(id);
+
+    if (result.affected === 0) {
+      throw new NotFoundException(`La reserva con ID ${id} no existe.`);
+    }
+
+    return { message: `Reserva ${id} eliminada correctamente.` };
+  }
+
+  // Tu lógica original que mantenemos segura
   async approveReservation(id: number): Promise<Reservation> {
     const reservation = await this.dataSource.getRepository(Reservation).findOne({ where: { id } });
     if (!reservation) throw new NotFoundException('Reserva no encontrada');
-    
+
     reservation.status = ReservationStatus.APPROVED;
     return await this.dataSource.getRepository(Reservation).save(reservation);
-  }
-
-  async findAll(): Promise<Reservation[]> {
-    return await this.dataSource.getRepository(Reservation).find({ relations: ['items'] });
   }
 }
