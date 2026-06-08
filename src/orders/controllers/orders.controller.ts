@@ -1,5 +1,5 @@
 import { 
-  Controller, Get, Post, Body, Patch, Param, ParseIntPipe, Req, UseGuards 
+  Controller, Get, Post, Body, Patch, Param, ParseIntPipe, Req, UseGuards, Query 
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { OrdersService } from '../service/orders.service';
@@ -17,14 +17,19 @@ export class OrdersController {
   create(@Body() createOrderDto: CreateOrderDto, @Req() req: any) {
     // Tomamos el ID real del usuario desde el Token JWT
     const userId = req.user.id; 
-return this.ordersService.createOrderFromCart(userId, createOrderDto);  }
-
-  @Get()
-  findAll(@Req() req: any) {
-    const userId = req.user.id;
-    return this.ordersService.findAll(userId);
+    return this.ordersService.createOrderFromCart(userId, createOrderDto); 
   }
 
+  @Get()
+  findAll(
+    @Req() req: any, 
+    @Query('reservationId') reservationId?: string // 👈 Atrapa el query param
+  ) {
+    const userId = req.user.id;
+    // Pasa el reservationId convertido a número (si existe) al servicio
+    return this.ordersService.findAll(userId, reservationId ? Number(reservationId) : undefined);
+  }
+  
   @Get(':id')
   findOne(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
     const userId = req.user.id;

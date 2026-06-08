@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, DeleteDateColumn, ManyToOne, JoinColumn } from 'typeorm';
 import { Category } from '../../categories/entities/category.entity';
 
 @Entity('products')
@@ -31,4 +31,8 @@ export class Product {
 
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt!: Date;
+
+  // 👇 Esta es la magia del Soft Delete. TypeORM llenará esta columna al borrar.
+  @DeleteDateColumn({ name: 'deleted_at' })
+  deletedAt?: Date;
 }

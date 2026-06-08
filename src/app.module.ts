@@ -13,6 +13,7 @@ import { OrdersModule } from './orders/orders.module';
 import { RolesModule } from './roles/roles.module';
 import { AdvertisementsModule } from './advertisements/advertisements.module';
 import { ReservationsModule } from './reservations/reservations.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 
 
 @Module({
@@ -51,6 +52,7 @@ import { ReservationsModule } from './reservations/reservations.module';
     RolesModule,
     AdvertisementsModule,
     ReservationsModule,
+    DashboardModule,
   ],
 })
 export class AppModule { }

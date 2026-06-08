@@ -1,44 +1,56 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
+import { 
+  Entity, 
+  PrimaryGeneratedColumn, 
+  Column, 
+  CreateDateColumn, 
+  UpdateDateColumn, 
+  ManyToOne, 
+  OneToMany, 
+  JoinColumn 
+} from 'typeorm';
 import { User } from '../../users/entities/user.entity';
 import { ReservationItem } from '../entities/reservation-item.entity';
 import { ReservationStatus } from '../enums/reservations.enums';
 import { ColumnNumericTransformer } from '../../common/utils/column-numeric.transformer';
 import { Order } from '../../orders/entities/order.entity';
+
 @Entity('reservations')
 export class Reservation {
   @PrimaryGeneratedColumn()
   id!: number;
 
+  @Column()
+  userId!: number;
+
+  // ✅ Relación con User correcta (Esto garantiza que el populate funcione)
   @ManyToOne(() => User, { nullable: false, onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'userId' })
   user!: User;
 
-  @Column()
-  userId!: number;
-
   @Column({ type: 'date' })
-  eventDate!: Date; // Fecha del matrimonio/evento
+  eventDate!: Date; 
 
   @Column({ type: 'varchar', length: 50 })
-  serviceStartTime!: string; // Horario en que debe iniciar el buffet (ej: "18:00")
+  serviceStartTime!: string; 
 
   @Column({ type: 'int' })
-  guestsCount!: number; // Cantidad de invitados/platos
+  guestsCount!: number; 
 
   @Column({ length: 255 })
-  venueAddress!: string; // Lugar del evento
+  venueAddress!: string; 
 
   @Column({ length: 100 })
   city!: string;
 
   @Column({ type: 'text', nullable: true })
-  additionalNotes?: string; // Detalles extra (ej: "5 invitados son vegetarianos")
-  @Column({ nullable: true })
-  orderId?: number; // 👈 Columna física en la base de datos
+  additionalNotes?: string; 
 
-  @ManyToOne(() => Order, { nullable: true, onDelete: 'SET NULL' })
-  @JoinColumn({ name: 'orderId' })
-  order?: Order; // 👈 Relación para hacer el Join
+  // 🚨 CORRECCIÓN ARQUITECTÓNICA: 
+  // Eliminamos el `orderId` físico de aquí. La Reserva no guarda el ID de la orden.
+  // La Orden guarda el ID de la Reserva. Por lo tanto, aquí es un OneToMany.
+  @OneToMany(() => Order, (order) => order.reservation)
+  orders!: Order[]; 
+
   @Column({
     type: 'numeric',
     precision: 10,
@@ -50,7 +62,7 @@ export class Reservation {
   @Column({
     type: 'enum',
     enum: ReservationStatus,
-    default: ReservationStatus.PENDING_REVIEW, // 👈 Empieza en revisión
+    default: ReservationStatus.PENDING_REVIEW, 
   })
   status!: ReservationStatus;
 

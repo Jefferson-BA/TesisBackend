@@ -7,8 +7,8 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, DataSource } from 'typeorm';
 
-import {CreateOrderDto} from '../dto/create-order.dto'
-import {UpdateOrderDto} from '../dto/update-order.dto'
+import { CreateOrderDto } from '../dto/create-order.dto';
+import { UpdateOrderDto } from '../dto/update-order.dto';
 import { Order } from '../entities/order.entity';
 import { Product } from '../../products/entities/product.entity';
 import { OrderItem } from '../entities/order-item.entity';
@@ -91,7 +91,7 @@ export class OrdersService {
       // 5. Guardar la actualización masiva de stock
       await queryRunner.manager.save(Product, products);
 
-      // 6. Crear la cabecera de la Orden con datos de envío y pago
+      // 6. Crear la cabecera de la Orden con datos de envío, pago y posible reserva
       const newOrder = queryRunner.manager.create(Order, {
         userId,
         totalAmount,
@@ -101,6 +101,8 @@ export class OrdersService {
         postalCode: createOrderDto.postalCode,
         phone: createOrderDto.phone,
         paymentMethod: createOrderDto.paymentMethod,
+        // 👇 AQUÍ AGREGAMOS LA ASIGNACIÓN DE LA RESERVA (Si viene en el DTO)
+        reservationId: (createOrderDto as any).reservationId || null, 
         items: orderItems,
       });
 
@@ -143,13 +145,47 @@ export class OrdersService {
   // ====================================================================
 
   /**
-   * Listar todas las órdenes de un usuario específico (Para su historial de compras)
+   * Listar todas las órdenes de un usuario específico, con filtro opcional de reserva
    */
-  async findAll(userId: number) {
-    return await this.orderRepository.find({
-      where: { userId },
-      relations: ['items', 'items.product'],
+/**
+   * Listar órdenes con mapeo optimizado y plano para tablas de monitoreo
+   */
+  async findAll(userId: number, reservationId?: number) {
+    const whereClause: any = {};
+
+    // 💡 SOLUCIÓN AL BUG: Si se filtra por reserva, es una vista de Admin. No restringimos por el userId del Admin.
+    if (reservationId) {
+      whereClause.reservationId = reservationId;
+    } else {
+      whereClause.userId = userId;
+    }
+
+    // Traemos las órdenes incluyendo sus relaciones para heredar los datos
+    const orders = await this.orderRepository.find({
+      where: whereClause,
+      relations: ['user', 'reservation'],
       order: { createdAt: 'DESC' },
+    });
+
+    // 🪄 Moldeamos el resultado exactamente al formato plano que requiere el Frontend
+    return orders.map((order) => {
+      const user = order.user as any;
+      const reservation = order.reservation as any;
+
+      return {
+        id: order.id,
+        fullName: user ? (user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim()) : 'No disponible',
+        email: user?.email || 'No disponible',
+        phone: user?.phone || 'No disponible',
+        city: reservation?.city || order.city || 'No disponible',
+        address: reservation?.venueAddress || order.shippingAddress || 'No disponible',
+        postalCode: order.postalCode || 'No disponible',
+        eventDate: reservation?.eventDate || 'No disponible',
+        notes: reservation?.additionalNotes || 'Sin notas',
+        total: Number(order.totalAmount || 0),
+        paymentMethod: order.paymentMethod || 'No especificado',
+        status: order.status || 'Pendiente',
+      };
     });
   }
 
