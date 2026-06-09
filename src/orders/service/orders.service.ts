@@ -25,11 +25,11 @@ export class OrdersService {
     private readonly productRepository: Repository<Product>,
     private readonly dataSource: DataSource,
     private readonly mailService: MailService,
-    private readonly cartService: CartService, // Lo mantenemos por si usas el carrito en otro lado
-  ) { }
+    private readonly cartService: CartService, // Se mantiene por si se usa el carrito en otras áreas
+  ) {}
 
   /**
-   * 🛒 CREAR ORDEN (Flujo Direct Checkout o Comprar Ahora)
+   * 🛒 CREAR ORDEN (Flujo Direct Checkout / Comprar Ahora)
    */
   async createOrder(userId: number, createOrderDto: CreateOrderDto) {
     // 1. Validar que vengan items directamente en el payload del frontend
@@ -47,9 +47,10 @@ export class OrdersService {
 
     try {
       // 3. Bloqueo Pesimista (Pessimistic Write)
+      // Evitamos LEFT JOINs automáticos con loadEagerRelations: false para que PostgreSQL no rompa el FOR UPDATE
       const products = await queryRunner.manager.find(Product, {
         where: { id: In(productIds) },
-        loadEagerRelations: false, // 👈 ESTA ES LA CLAVE
+        loadEagerRelations: false, 
         lock: { mode: 'pessimistic_write' },
       });
 
@@ -72,7 +73,7 @@ export class OrdersService {
           );
         }
 
-        // Calcular montos y descontar stock
+        // Calcular montos y descontar stock en memoria
         totalAmount += Number(product.price) * dtoItem.quantity;
         product.stock -= dtoItem.quantity;
 
@@ -104,7 +105,7 @@ export class OrdersService {
 
       const savedOrder = await queryRunner.manager.save(Order, newOrder);
 
-      // 7. (Opcional) Si el usuario tenía este carrito pendiente en BD, lo vaciamos por limpieza
+      // 7. (Opcional) Si el usuario tenía este carrito activo en BD, lo vaciamos por limpieza de estado
       const cart = await this.cartService.findOrCreateCart(userId);
       if (cart) {
         await queryRunner.manager.query(
@@ -116,7 +117,7 @@ export class OrdersService {
       // 8. Confirmar Transacción
       await queryRunner.commitTransaction();
 
-      // 9. Disparar correo asíncrono
+      // 9. Disparar correo asíncrono (No bloquea la velocidad de respuesta del HTTP)
       this.mailService.sendOrderConfirmation(
         'correo-de-prueba@gmail.com',
         savedOrder.id,
@@ -126,12 +127,14 @@ export class OrdersService {
       return savedOrder;
 
     } catch (error) {
+      // Si algo falla, deshacemos todos los pasos concurrentes
       await queryRunner.rollbackTransaction();
       if (error instanceof BadRequestException) {
         throw error;
       }
       throw new InternalServerErrorException('Error al procesar la orden: ' + (error as Error).message);
     } finally {
+      // Liberar la conexión al pool
       await queryRunner.release();
     }
   }
@@ -140,6 +143,9 @@ export class OrdersService {
   // MÉTODOS PÚBLICOS DE GESTIÓN Y LECTURA (Admin / Customer)
   // ====================================================================
 
+  /**
+   * Listar órdenes con mapeo optimizado y los productos inyectados en la raíz
+   */
   async findAll(userId: number, reservationId?: number) {
     const whereClause: any = {};
 
@@ -149,12 +155,14 @@ export class OrdersService {
       whereClause.userId = userId;
     }
 
+    // Traemos las relaciones necesarias incluyendo items y el producto interno de cada item
     const orders = await this.orderRepository.find({
       where: whereClause,
-      relations: ['user', 'reservation'],
+      relations: ['user', 'reservation', 'items', 'items.product'],
       order: { createdAt: 'DESC' },
     });
 
+    // Moldeamos la respuesta exactamente como el Frontend la requiere
     return orders.map((order) => {
       const user = order.user as any;
       const reservation = order.reservation as any;
@@ -172,10 +180,23 @@ export class OrdersService {
         total: Number(order.totalAmount || 0),
         paymentMethod: order.paymentMethod || 'No especificado',
         status: order.status || 'Pendiente',
+        
+        // ✨ SOLUCIÓN AL FRONTEND: Mapeo de platos directo en la raíz del pedido
+        items: order.items ? order.items.map((item) => ({
+          id: item.id,
+          productId: item.productId,
+          name: (item.product as any)?.name || 'Producto no disponible',
+          price: Number(item.price || 0),
+          quantity: item.quantity,
+          subtotal: Number(item.price || 0) * item.quantity,
+        })) : [],
       };
     });
   }
 
+  /**
+   * Ver el detalle a fondo de una orden en particular
+   */
   async findOne(id: number, userId: number) {
     const order = await this.orderRepository.findOne({
       where: { id, userId },
@@ -188,6 +209,9 @@ export class OrdersService {
     return order;
   }
 
+  /**
+   * Cambiar el estado de la orden (Uso exclusivo de Admin)
+   */
   async updateStatus(id: number, updateOrderDto: UpdateOrderDto) {
     const order = await this.orderRepository.preload({
       id,
