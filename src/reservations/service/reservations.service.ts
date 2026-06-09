@@ -62,7 +62,7 @@ export class ReservationsService {
         city: dto.city,
         additionalNotes: dto.additionalNotes,
         totalAmount,
-        status: ReservationStatus.PENDING_REVIEW, 
+        status: ReservationStatus.PENDING_REVIEW,
         items: reservationItems,
       });
 
@@ -119,24 +119,31 @@ export class ReservationsService {
     // 🧮 findAndCount devuelve un arreglo: [los_registros, el_total_absoluto]
     const [reservations, total] = await this.dataSource.getRepository(Reservation).findAndCount({
       where: whereClause,
-      relations: ['items', 'user', 'orders'], 
+      relations: ['items', 'user', 'orders'],
       order: { id: 'DESC' },
       withDeleted: true,
       skip: (page - 1) * limit, // 👈 Cuántos registros saltar
       take: limit,              // 👈 Cuántos registros extraer (Límite por página)
     });
 
-    // 🛡️ Normalización defensiva para el Frontend
-    const formattedData = reservations.map((res) => {
+    const formattedData = reservations.map((res: any) => {
+      // 1. Buscamos el teléfono en la orden (asumiendo que 'orders' es un array por su nombre plural)
+      const orderPhone = res.orders && res.orders.length > 0 ? res.orders[0].phone : null;
+
       if (res.user) {
-        const dbUser = res.user as any;
+        const dbUser = res.user;
         res.user = {
           ...res.user,
           name: dbUser.name || `${dbUser.firstName || ''} ${dbUser.lastName || ''}`.trim() || 'Cliente sin nombre',
           email: dbUser.email,
-          phone: dbUser.phone || 'Sin teléfono',
-        } as any;
+          // 2. Priorizamos el teléfono del usuario, si no hay, usamos el de la orden
+          phone: dbUser.phone || orderPhone || null,
+        };
       }
+
+      // 3. Opción B del frontend: Lo exponemos directamente en la raíz de la reserva por comodidad
+      res.phone = orderPhone || (res.user?.phone) || null;
+
       return res;
     });
 

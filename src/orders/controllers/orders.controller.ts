@@ -17,7 +17,7 @@ export class OrdersController {
   create(@Body() createOrderDto: CreateOrderDto, @Req() req: any) {
     // Tomamos el ID real del usuario desde el Token JWT
     const userId = req.user.id; 
-    return this.ordersService.createOrderFromCart(userId, createOrderDto); 
+    return this.ordersService.createOrder(userId, createOrderDto); 
   }
 
   @Get()

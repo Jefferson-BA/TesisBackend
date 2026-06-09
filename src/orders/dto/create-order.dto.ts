@@ -5,6 +5,7 @@ import {
   IsEnum,
   IsArray,
   ValidateNested,
+  IsNumber,
 } from 'class-validator';
 
 import { Type } from 'class-transformer';
@@ -32,6 +33,10 @@ export class CreateOrderDto {
   @IsEnum(PaymentMethod)
   @IsOptional()
   paymentMethod?: PaymentMethod;
+  
+  @IsNumber()
+  @IsOptional()
+  reservationId?: number;
 
   @IsArray()
   @ValidateNested({ each: true })

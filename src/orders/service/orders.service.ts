@@ -25,21 +25,20 @@ export class OrdersService {
     private readonly productRepository: Repository<Product>,
     private readonly dataSource: DataSource,
     private readonly mailService: MailService,
-    private readonly cartService: CartService,
-  ) {}
+    private readonly cartService: CartService, // Lo mantenemos por si usas el carrito en otro lado
+  ) { }
 
   /**
-   * CREAR ORDEN DESDE EL CARRITO (El corazón del flujo de checkout)
+   * 🛒 CREAR ORDEN (Flujo Direct Checkout o Comprar Ahora)
    */
-  async createOrderFromCart(userId: number, createOrderDto: CreateOrderDto) {
-    // 1. Obtener el carrito activo del usuario
-    const cart = await this.cartService.findOrCreateCart(userId);
-    if (!cart.items || cart.items.length === 0) {
-      throw new BadRequestException('El carrito está vacío, no se puede crear una orden.');
+  async createOrder(userId: number, createOrderDto: CreateOrderDto) {
+    // 1. Validar que vengan items directamente en el payload del frontend
+    if (!createOrderDto.items || createOrderDto.items.length === 0) {
+      throw new BadRequestException('No se enviaron productos/servicios para crear la orden.');
     }
 
-    // Extaer todos los IDs de productos para buscarlos en bloque de forma eficiente
-    const productIds = cart.items.map((item) => item.product.id);
+    // Extraer IDs usando la llave correcta del DTO (productId)
+    const productIds = createOrderDto.items.map((item) => item.productId);
 
     // 2. Iniciar Transacción Atómica
     const queryRunner = this.dataSource.createQueryRunner();
@@ -47,51 +46,49 @@ export class OrdersService {
     await queryRunner.startTransaction();
 
     try {
-      // 3. Bloqueo Pesimista (Pessimistic Write):
-      // Trae todos los productos de la orden juntos y bloquea sus filas en la BD momentáneamente.
-      // Evita que dos usuarios compren el mismo stock al mismo tiempo.
+      // 3. Bloqueo Pesimista (Pessimistic Write)
       const products = await queryRunner.manager.find(Product, {
         where: { id: In(productIds) },
+        loadEagerRelations: false, // 👈 ESTA ES LA CLAVE
         lock: { mode: 'pessimistic_write' },
       });
 
-      // Mapeo O(1) para buscar productos a máxima velocidad en memoria
       const productsMap = new Map(products.map((p) => [p.id, p]));
 
       let totalAmount = 0;
       const orderItems: OrderItem[] = [];
 
-      // 4. Procesar y validar cada elemento traído del carrito
-      for (const cartItem of cart.items) {
-        const product = productsMap.get(cartItem.product.id);
+      // 4. Procesar los elementos enviados por el frontend
+      for (const dtoItem of createOrderDto.items) {
+        const product = productsMap.get(dtoItem.productId);
 
         if (!product) {
-          throw new BadRequestException(`El producto con ID ${cartItem.product.id} ya no está disponible.`);
+          throw new BadRequestException(`El producto con ID ${dtoItem.productId} ya no está disponible.`);
         }
 
-        if (product.stock < cartItem.quantity) {
+        if (product.stock < dtoItem.quantity) {
           throw new BadRequestException(
             `No hay suficiente stock para: ${product.name}. Stock disponible: ${product.stock}`,
           );
         }
 
-        // Calcular montos y descontar stock en memoria
-        totalAmount += Number(product.price) * cartItem.quantity;
-        product.stock -= cartItem.quantity;
+        // Calcular montos y descontar stock
+        totalAmount += Number(product.price) * dtoItem.quantity;
+        product.stock -= dtoItem.quantity;
 
         // Generar la fila del detalle de la orden
         const orderItem = queryRunner.manager.create(OrderItem, {
           productId: product.id,
-          quantity: cartItem.quantity,
-          price: product.price,
+          quantity: dtoItem.quantity,
+          price: product.price, // Precio congelado al momento de la compra
         });
         orderItems.push(orderItem);
       }
 
-      // 5. Guardar la actualización masiva de stock
+      // 5. Guardar actualización de stock masiva
       await queryRunner.manager.save(Product, products);
 
-      // 6. Crear la cabecera de la Orden con datos de envío, pago y posible reserva
+      // 6. Crear cabecera de la Orden
       const newOrder = queryRunner.manager.create(Order, {
         userId,
         totalAmount,
@@ -101,25 +98,27 @@ export class OrdersService {
         postalCode: createOrderDto.postalCode,
         phone: createOrderDto.phone,
         paymentMethod: createOrderDto.paymentMethod,
-        // 👇 AQUÍ AGREGAMOS LA ASIGNACIÓN DE LA RESERVA (Si viene en el DTO)
-        reservationId: (createOrderDto as any).reservationId || null, 
+        reservationId: createOrderDto.reservationId,
         items: orderItems,
       });
 
       const savedOrder = await queryRunner.manager.save(Order, newOrder);
 
-      // 7. Vaciar el carrito de compras directamente en la transacción
-      await queryRunner.manager.query(
-        `DELETE FROM cart_items WHERE "cartId" = $1`,
-        [cart.id],
-      );
+      // 7. (Opcional) Si el usuario tenía este carrito pendiente en BD, lo vaciamos por limpieza
+      const cart = await this.cartService.findOrCreateCart(userId);
+      if (cart) {
+        await queryRunner.manager.query(
+          `DELETE FROM cart_items WHERE "cartId" = $1`,
+          [cart.id],
+        );
+      }
 
-      // 8. Confirmar todos los cambios en la Base de Datos
+      // 8. Confirmar Transacción
       await queryRunner.commitTransaction();
 
-      // 9. Disparar correo de confirmación de forma asíncrona (No frena la respuesta del servidor)
+      // 9. Disparar correo asíncrono
       this.mailService.sendOrderConfirmation(
-        'correo-de-prueba@gmail.com', // 👈 Aquí luego puedes mapear el correo real del usuario
+        'correo-de-prueba@gmail.com',
         savedOrder.id,
         savedOrder.totalAmount,
       );
@@ -127,15 +126,12 @@ export class OrdersService {
       return savedOrder;
 
     } catch (error) {
-      // Si algo falla, se deshacen todos los cambios automáticamente (Roolback)
       await queryRunner.rollbackTransaction();
-
       if (error instanceof BadRequestException) {
         throw error;
       }
       throw new InternalServerErrorException('Error al procesar la orden: ' + (error as Error).message);
     } finally {
-      // Liberar el hilo de conexión
       await queryRunner.release();
     }
   }
@@ -144,30 +140,21 @@ export class OrdersService {
   // MÉTODOS PÚBLICOS DE GESTIÓN Y LECTURA (Admin / Customer)
   // ====================================================================
 
-  /**
-   * Listar todas las órdenes de un usuario específico, con filtro opcional de reserva
-   */
-/**
-   * Listar órdenes con mapeo optimizado y plano para tablas de monitoreo
-   */
   async findAll(userId: number, reservationId?: number) {
     const whereClause: any = {};
 
-    // 💡 SOLUCIÓN AL BUG: Si se filtra por reserva, es una vista de Admin. No restringimos por el userId del Admin.
     if (reservationId) {
       whereClause.reservationId = reservationId;
     } else {
       whereClause.userId = userId;
     }
 
-    // Traemos las órdenes incluyendo sus relaciones para heredar los datos
     const orders = await this.orderRepository.find({
       where: whereClause,
       relations: ['user', 'reservation'],
       order: { createdAt: 'DESC' },
     });
 
-    // 🪄 Moldeamos el resultado exactamente al formato plano que requiere el Frontend
     return orders.map((order) => {
       const user = order.user as any;
       const reservation = order.reservation as any;
@@ -189,9 +176,6 @@ export class OrdersService {
     });
   }
 
-  /**
-   * Ver el detalle a fondo de una orden en particular
-   */
   async findOne(id: number, userId: number) {
     const order = await this.orderRepository.findOne({
       where: { id, userId },
@@ -204,9 +188,6 @@ export class OrdersService {
     return order;
   }
 
-  /**
-   * Cambiar el estado de la orden (Ideal para que el Admin marque como PAGADO o ENVIADO)
-   */
   async updateStatus(id: number, updateOrderDto: UpdateOrderDto) {
     const order = await this.orderRepository.preload({
       id,
