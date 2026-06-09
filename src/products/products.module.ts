@@ -5,9 +5,9 @@ import { ProductsController } from './controllers/products.controller';
 import { Product } from './entities/product.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Product])], // 👈 Registramos la tabla
+  imports: [TypeOrmModule.forFeature([Product])],
   controllers: [ProductsController],
   providers: [ProductsService],
-  exports: [ProductsService], // 👈 Vital para que OrdersService pueda buscar los productos
+  exports: [ProductsService] // 👈 AÑADE ESTA LÍNEA (Vital para compartirlo)
 })
 export class ProductsModule {}
