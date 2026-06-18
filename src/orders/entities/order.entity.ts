@@ -4,6 +4,7 @@ import {
   PrimaryGeneratedColumn,
   CreateDateColumn,
   UpdateDateColumn,
+  DeleteDateColumn, // 👈 Importado
   ManyToOne,
   OneToMany,
   Index,
@@ -72,7 +73,6 @@ export class Order {
   })
   items!: OrderItem[];
 
-  // Relación opcional con una reserva
   @Column({ nullable: true })
   reservationId?: number;
 
@@ -83,9 +83,13 @@ export class Order {
   @JoinColumn({ name: 'reservationId' })
   reservation?: Reservation;
 
+  @Index() // 👈 CRÍTICO: Hace que las gráficas del Dashboard carguen al instante
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 
   @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt!: Date;
+
+  @DeleteDateColumn() // 👈 CRÍTICO: Protege el historial financiero
+  deletedAt?: Date;
 }

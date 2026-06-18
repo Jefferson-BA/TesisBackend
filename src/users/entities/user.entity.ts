@@ -7,11 +7,12 @@ import {
   AfterLoad,
   CreateDateColumn,
   UpdateDateColumn,
-  DeleteDateColumn, // 👈 Importante
+  DeleteDateColumn,
   OneToMany,
   ManyToOne,
   JoinColumn,
-  OneToOne
+  OneToOne,
+  Index // 👈 Importado
 } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
 import { Exclude } from 'class-transformer';
@@ -27,11 +28,12 @@ export class User {
   @Column()
   name!: string;
 
+  @Index() // 👈 Acelera la búsqueda durante el Login
   @Column({ unique: true })
   email!: string;
 
   @Column()
-  @Exclude() // 👈 Esto ocultará la clave en las respuestas JSON
+  @Exclude()
   password!: string;
 
   @OneToOne(() => Cart, (cart) => cart.user)
@@ -41,6 +43,7 @@ export class User {
   @JoinColumn({ name: 'role_id' })
   role!: Role;
 
+  @Index() // 👈 Acelera los filtros del dashboard o panel de admin
   @Column({ default: true })
   isActive!: boolean;
 
@@ -53,7 +56,7 @@ export class User {
   @UpdateDateColumn()
   updatedAt!: Date;
 
-  @DeleteDateColumn() // 👈 Soft Delete: Guarda la fecha de borrado sin eliminar el registro
+  @DeleteDateColumn()
   deletedAt?: Date;
 
   @OneToMany(() => Order, (order) => order.user)
