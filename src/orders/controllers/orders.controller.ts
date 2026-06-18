@@ -23,7 +23,7 @@ export class OrdersController {
   @Get()
   findAll(
     @Req() req: any, 
-    @Query('reservationId') reservationId?: string // 👈 Atrapa el query param
+    @Query('reservationId') reservationId?: string
   ) {
     const userId = req.user.id;
     // Pasa el reservationId convertido a número (si existe) al servicio

@@ -32,7 +32,6 @@ export class DashboardService {
         totalCustomers: totalUsers,
       },
       charts: {
-        // Aquí puedes estructurar arreglos dummy por ahora para que el front pinte los gráficos
         salesMonthly: [1200, 1900, 3000, 5000, 4000, 6000],
         reservationsStatus: {
           pending: await reservationRepository.count({ where: { status: 'pending_review' as any } }),
