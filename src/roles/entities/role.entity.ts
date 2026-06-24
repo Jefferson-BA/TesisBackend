@@ -17,7 +17,6 @@ export class Role {
   @Column({ type: 'text', nullable: true })
   description?: string;
 
-  // 🔥 Relación inversa: Un rol puede tener muchos usuarios
   @OneToMany(() => User, (user) => user.role)
   users!: User[];
 }

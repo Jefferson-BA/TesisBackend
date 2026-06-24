@@ -7,14 +7,19 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, DataSource } from 'typeorm';
 
+import { PayOrderDto } from '../dto/pay-order.dto';
 import { CreateOrderDto } from '../dto/create-order.dto';
 import { UpdateOrderDto } from '../dto/update-order.dto';
 import { Order } from '../entities/order.entity';
 import { Product } from '../../products/entities/product.entity';
 import { OrderItem } from '../entities/order-item.entity';
+import { Reservation } from '../../reservations/entities/reservation.entity';
+import { ReservationStatus } from '../../reservations/enums/reservations.enums';
+
 import { MailService } from '../../mail/mail.service';
 import { CartService } from '../../cart/service/cart.service';
-import { OrderStatus } from '../enums/order.enums';
+import { OrderStatus, PaymentMethod } from '../enums/order.enums';
+import { CulqiService } from '../../payments/service/culqi.service';
 
 @Injectable()
 export class OrdersService {
@@ -23,146 +28,224 @@ export class OrdersService {
     private readonly orderRepository: Repository<Order>,
     @InjectRepository(Product)
     private readonly productRepository: Repository<Product>,
+    @InjectRepository(Reservation)
+    private readonly reservationRepository: Repository<Reservation>,
     private readonly dataSource: DataSource,
     private readonly mailService: MailService,
-    private readonly cartService: CartService, // Se mantiene por si se usa el carrito en otras áreas
-  ) {}
+    private readonly cartService: CartService,
+    private readonly culqiService: CulqiService,
+  ) { }
 
-  /**
-   * 🛒 CREAR ORDEN (Flujo Direct Checkout / Comprar Ahora)
-   */
+
   async createOrder(userId: number, createOrderDto: CreateOrderDto) {
-    // 1. Validar que vengan items directamente en el payload del frontend
-    if (!createOrderDto.items || createOrderDto.items.length === 0) {
-      throw new BadRequestException('No se enviaron productos/servicios para crear la orden.');
-    }
-
-    // Extraer IDs usando la llave correcta del DTO (productId)
-    const productIds = createOrderDto.items.map((item) => item.productId);
-
-    // 2. Iniciar Transacción Atómica
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
     try {
-      // 3. Bloqueo Pesimista (Pessimistic Write)
-      // Evitamos LEFT JOINs automáticos con loadEagerRelations: false para que PostgreSQL no rompa el FOR UPDATE
-      const products = await queryRunner.manager.find(Product, {
-        where: { id: In(productIds) },
-        loadEagerRelations: false, 
-        lock: { mode: 'pessimistic_write' },
-      });
-
-      const productsMap = new Map(products.map((p) => [p.id, p]));
-
       let totalAmount = 0;
       const orderItems: OrderItem[] = [];
+      let finalShippingAddress = createOrderDto.shippingAddress;
+      let finalCity = createOrderDto.city;
 
-      // 4. Procesar los elementos enviados por el frontend
-      for (const dtoItem of createOrderDto.items) {
-        const product = productsMap.get(dtoItem.productId);
-
-        if (!product) {
-          throw new BadRequestException(`El producto con ID ${dtoItem.productId} ya no está disponible.`);
-        }
-
-        if (product.stock < dtoItem.quantity) {
-          throw new BadRequestException(
-            `No hay suficiente stock para: ${product.name}. Stock disponible: ${product.stock}`,
-          );
-        }
-
-        // Calcular montos y descontar stock en memoria
-        totalAmount += Number(product.price) * dtoItem.quantity;
-        product.stock -= dtoItem.quantity;
-
-        // Generar la fila del detalle de la orden
-        const orderItem = queryRunner.manager.create(OrderItem, {
-          productId: product.id,
-          quantity: dtoItem.quantity,
-          price: product.price, // Precio congelado al momento de la compra
+      // 🌟 ESCENARIO A: Creación desde una RESERVA (Single Source of Truth)
+      if (createOrderDto.reservationId) {
+        const reservation = await this.reservationRepository.findOne({
+          where: { id: createOrderDto.reservationId, userId },
+          relations: ['items', 'items.product'],
         });
-        orderItems.push(orderItem);
+
+        if (!reservation) {
+          throw new NotFoundException(`La reserva #${createOrderDto.reservationId} no existe o no te pertenece.`);
+        }
+
+        if (reservation.status !== ReservationStatus.APPROVED) {
+          throw new BadRequestException('La reserva debe estar Aprobada para poder generar la orden de pago.');
+        }
+
+        // Tomamos los datos de la reserva
+        finalShippingAddress = finalShippingAddress || reservation.venueAddress || 'Dirección no especificada';
+        finalCity = finalCity || reservation.city || 'Ciudad no especificada';
+
+        for (const resItem of reservation.items) {
+          const product = resItem.product;
+
+          if (product.stock < resItem.quantity) {
+            throw new BadRequestException(`No hay suficiente stock para: ${product.name}`);
+          }
+
+          product.stock -= resItem.quantity;
+          await queryRunner.manager.save(Product, product);
+
+          totalAmount += Number(resItem.price) * resItem.quantity;
+
+          const orderItem = queryRunner.manager.create(OrderItem, {
+            productId: product.id,
+            quantity: resItem.quantity,
+            price: resItem.price,
+          });
+          orderItems.push(orderItem);
+        }
+      }
+      // 🛒 ESCENARIO B: Creación desde el CARRITO normal (Sin reserva)
+      else {
+        if (!createOrderDto.items || createOrderDto.items.length === 0) {
+          throw new BadRequestException('No se enviaron productos para crear la orden.');
+        }
+        if (!finalShippingAddress) {
+          throw new BadRequestException('La dirección de envío es obligatoria para órdenes directas.');
+        }
+
+        const productIds = createOrderDto.items.map((item) => item.productId);
+        const products = await queryRunner.manager.find(Product, {
+          where: { id: In(productIds) },
+          lock: { mode: 'pessimistic_write' },
+        });
+
+        const productsMap = new Map(products.map((p) => [p.id, p]));
+
+        for (const dtoItem of createOrderDto.items) {
+          const product = productsMap.get(dtoItem.productId);
+
+          if (!product) {
+            throw new BadRequestException(`El producto con ID ${dtoItem.productId} no está disponible.`);
+          }
+          if (product.stock < dtoItem.quantity) {
+            throw new BadRequestException(`No hay suficiente stock para: ${product.name}`);
+          }
+
+          totalAmount += Number(product.price) * dtoItem.quantity;
+          product.stock -= dtoItem.quantity;
+
+          const orderItem = queryRunner.manager.create(OrderItem, {
+            productId: product.id,
+            quantity: dtoItem.quantity,
+            price: product.price,
+          });
+          orderItems.push(orderItem);
+        }
+        await queryRunner.manager.save(Product, products);
       }
 
-      // 5. Guardar actualización de stock masiva
-      await queryRunner.manager.save(Product, products);
-
-      // 6. Crear cabecera de la Orden
       const newOrder = queryRunner.manager.create(Order, {
         userId,
         totalAmount,
         status: OrderStatus.PENDING,
-        shippingAddress: createOrderDto.shippingAddress,
-        city: createOrderDto.city,
+        shippingAddress: finalShippingAddress,
+        city: finalCity,
         postalCode: createOrderDto.postalCode,
         phone: createOrderDto.phone,
-        paymentMethod: createOrderDto.paymentMethod,
+        paymentMethod: createOrderDto.paymentMethod || ('card' as PaymentMethod),
         reservationId: createOrderDto.reservationId,
         items: orderItems,
       });
 
       const savedOrder = await queryRunner.manager.save(Order, newOrder);
 
-      // 7. (Opcional) Si el usuario tenía este carrito activo en BD, lo vaciamos por limpieza de estado
       const cart = await this.cartService.findOrCreateCart(userId);
       if (cart) {
-        await queryRunner.manager.query(
-          `DELETE FROM cart_items WHERE "cartId" = $1`,
-          [cart.id],
-        );
+        await queryRunner.manager.query(`DELETE FROM cart_items WHERE "cartId" = $1`, [cart.id]);
       }
 
-      // 8. Confirmar Transacción
       await queryRunner.commitTransaction();
 
-      // 9. Disparar correo asíncrono (No bloquea la velocidad de respuesta del HTTP)
-      this.mailService.sendOrderConfirmation(
-        'correo-de-prueba@gmail.com',
-        savedOrder.id,
-        savedOrder.totalAmount,
-      );
-
-      return savedOrder;
+      return {
+        success: true,
+        orderId: savedOrder.id,
+        message: 'Orden generada. Pendiente de pago.',
+      };
 
     } catch (error) {
-      // Si algo falla, deshacemos todos los pasos concurrentes
       await queryRunner.rollbackTransaction();
-      if (error instanceof BadRequestException) {
+      if (error instanceof BadRequestException || error instanceof NotFoundException) {
         throw error;
       }
       throw new InternalServerErrorException('Error al procesar la orden: ' + (error as Error).message);
     } finally {
-      // Liberar la conexión al pool
       await queryRunner.release();
     }
   }
 
-  // ====================================================================
-  // MÉTODOS PÚBLICOS DE GESTIÓN Y LECTURA (Admin / Customer)
-  // ====================================================================
-
   /**
-   * Listar órdenes con mapeo optimizado y los productos inyectados en la raíz
+   * 💳 PASO 2: PROCESAR EL PAGO (Culqi)
    */
+  async payOrder(orderId: number, userId: number, payOrderDto: PayOrderDto) {
+    const { tokenId, amount, email } = payOrderDto;
+
+    const order = await this.orderRepository.findOne({
+      where: { id: orderId, userId },
+      relations: ['user']
+    });
+
+    if (!order) {
+      throw new NotFoundException(`La orden #${orderId} no existe o no te pertenece.`);
+    }
+
+    if (order.status !== OrderStatus.PENDING) {
+      throw new BadRequestException(`Esta orden ya fue procesada. Estado actual: ${order.status}`);
+    }
+
+    if (Number(order.totalAmount) !== Number(amount)) {
+      throw new BadRequestException('El monto enviado no coincide con el total de la orden.');
+    }
+
+    const customerEmail = email || order.user.email;
+
+    try {
+      const chargeId = await this.culqiService.createCharge(
+        Number(order.totalAmount), 
+        customerEmail,
+        tokenId
+      );
+
+      // 1. Guardamos la orden como pagada
+      order.status = OrderStatus.PAID as any;
+      await this.orderRepository.save(order);
+
+      // 2. Enviamos el correo
+      this.mailService.sendOrderConfirmation(
+        customerEmail,
+        order.id,
+        order.totalAmount,
+      );
+
+      // 3. Actualizamos la Reserva asociada
+      if (order.reservationId) {
+        await this.reservationRepository.update(
+          order.reservationId,
+          { status: ReservationStatus.FULLY_PAID }
+        );
+      }
+
+      return {
+        success: true,
+        message: 'Pago procesado exitosamente',
+        chargeId,
+        orderId: order.id,
+        status: order.status
+      };
+
+    } catch (error: any) {
+      order.status = OrderStatus.FAILED as any;
+      await this.orderRepository.save(order);
+      throw new BadRequestException(error.message || 'La pasarela de pagos rechazó la transacción.');
+    }
+  }
+
   async findAll(userId: number, reservationId?: number) {
     const whereClause: any = {};
-
     if (reservationId) {
       whereClause.reservationId = reservationId;
     } else {
       whereClause.userId = userId;
     }
 
-    // Traemos las relaciones necesarias incluyendo items y el producto interno de cada item
     const orders = await this.orderRepository.find({
       where: whereClause,
       relations: ['user', 'reservation', 'items', 'items.product'],
       order: { createdAt: 'DESC' },
     });
 
-    // Moldeamos la respuesta exactamente como el Frontend la requiere
     return orders.map((order) => {
       const user = order.user as any;
       const reservation = order.reservation as any;
@@ -180,8 +263,7 @@ export class OrdersService {
         total: Number(order.totalAmount || 0),
         paymentMethod: order.paymentMethod || 'No especificado',
         status: order.status || 'Pendiente',
-        
-        // ✨ SOLUCIÓN AL FRONTEND: Mapeo de platos directo en la raíz del pedido
+
         items: order.items ? order.items.map((item) => ({
           id: item.id,
           productId: item.productId,
@@ -194,9 +276,6 @@ export class OrdersService {
     });
   }
 
-  /**
-   * Ver el detalle a fondo de una orden en particular
-   */
   async findOne(id: number, userId: number) {
     const order = await this.orderRepository.findOne({
       where: { id, userId },
@@ -209,9 +288,6 @@ export class OrdersService {
     return order;
   }
 
-  /**
-   * Cambiar el estado de la orden (Uso exclusivo de Admin)
-   */
   async updateStatus(id: number, updateOrderDto: UpdateOrderDto) {
     const order = await this.orderRepository.preload({
       id,
@@ -219,7 +295,6 @@ export class OrdersService {
     });
 
     if (!order) throw new NotFoundException(`La orden #${id} no existe.`);
-
     return await this.orderRepository.save(order);
   }
 }

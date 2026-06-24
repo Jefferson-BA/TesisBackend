@@ -19,8 +19,9 @@ export class ColumnNumericTransformer {
 }
 
 export enum OrderStatus {
-  PENDING = 'pending',
-  PAID = 'paid',
+  PENDING = 'pending', // Creado, esperando pago
+  PAID = 'paid',       // Pago aprobado por Culqi
+  FAILED = 'failed',   // Tarjeta rechazada
   SHIPPED = 'shipped',
   DELIVERED = 'delivered',
   CANCELLED = 'cancelled',
@@ -38,10 +39,10 @@ export class Order {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @Index() 
-  @ManyToOne(() => User, (user) => user.orders, { 
-    nullable: false, 
-    onDelete: 'RESTRICT' 
+  @Index()
+  @ManyToOne(() => User, (user) => user.orders, {
+    nullable: false,
+    onDelete: 'RESTRICT'
   })
   @JoinColumn({ name: 'userId' })
   user!: User;
@@ -49,12 +50,12 @@ export class Order {
   @Column()
   userId!: number;
 
-  @Column({ 
-    type: 'decimal', 
-    precision: 12, 
-    scale: 2, 
+  @Column({
+    type: 'decimal',
+    precision: 12,
+    scale: 2,
     default: 0,
-    transformer: new ColumnNumericTransformer() 
+    transformer: new ColumnNumericTransformer()
   })
   totalAmount!: number;
 
@@ -62,7 +63,7 @@ export class Order {
   shippingAddress!: string;
 
   @Column({ length: 100, nullable: true })
-  city?: string; 
+  city?: string;
 
   @Column({ length: 20, nullable: true })
   postalCode?: string;
@@ -86,11 +87,11 @@ export class Order {
   paymentMethod!: PaymentMethod;
 
   @OneToMany(() => OrderItem, (item) => item.order, {
-    cascade: true, 
+    cascade: true,
   })
   items!: OrderItem[];
 
-  @CreateDateColumn({ type: 'timestamptz' }) 
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 
   @UpdateDateColumn({ type: 'timestamptz' })

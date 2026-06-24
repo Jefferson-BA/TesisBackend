@@ -1,13 +1,11 @@
 import {
   IsString,
-  IsNotEmpty,
   IsOptional,
   IsEnum,
   IsArray,
   ValidateNested,
   IsNumber,
 } from 'class-validator';
-
 import { Type } from 'class-transformer';
 
 import { PaymentMethod } from '../enums/order.enums';
@@ -15,8 +13,8 @@ import { CreateOrderItemDto } from './create-order-item.dto';
 
 export class CreateOrderDto {
   @IsString()
-  @IsNotEmpty()
-  shippingAddress!: string;
+  @IsOptional() // 👈 Ahora es opcional
+  shippingAddress?: string;
 
   @IsString()
   @IsOptional()
@@ -39,7 +37,8 @@ export class CreateOrderDto {
   reservationId?: number;
 
   @IsArray()
+  @IsOptional() // 👈 Ahora es opcional
   @ValidateNested({ each: true })
   @Type(() => CreateOrderItemDto)
-  items!: CreateOrderItemDto[];
+  items?: CreateOrderItemDto[];
 }

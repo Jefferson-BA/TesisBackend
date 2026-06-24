@@ -1,16 +1,37 @@
-import { Injectable, InternalServerErrorException, BadRequestException } from '@nestjs/common';
+import { 
+  Injectable, 
+  InternalServerErrorException, 
+  BadRequestException,
+  Logger // 👈 Agregamos el Logger de NestJS
+} from '@nestjs/common';
 
 @Injectable()
 export class CulqiService {
   private readonly culqiApiUrl = 'https://api.culqi.com/v2';
-  
-  // En un entorno real, esto viene de @nestjs/config (process.env.CULQI_SECRET_KEY)
   private readonly secretKey = process.env.CULQI_SECRET_KEY;
+  private readonly logger = new Logger(CulqiService.name); // 👈 Inicializamos el Logger
 
   async createCharge(amount: number, email: string, tokenId: string) {
     try {
-      // Culqi requiere el monto en céntimos (ej. S/ 50.50 -> 5050)
-      const amountInCents = Math.round(amount * 100);
+      // 1. Validación estricta antes de hacer cualquier cálculo
+      if (!amount || isNaN(Number(amount)) || amount <= 0) {
+        throw new BadRequestException(`El monto de la orden es inválido o cero: ${amount}`);
+      }
+
+      // 2. Culqi requiere el monto en céntimos enteros (ej. S/ 80.50 -> 8050)
+      const amountInCents = Math.round(Number(amount) * 100);
+
+      // 3. Estructura exacta solicitada
+      const payload = {
+        amount: amountInCents,
+        currency_code: 'PEN',
+        email: email,
+        source_id: tokenId,
+      };
+
+      // 🕵️‍♂️ LOG PARA DEBUG: Esto aparecerá en tu terminal. 
+      // Te ayudará a confirmar si el JSON se armó bien.
+      this.logger.debug(`Enviando payload a Culqi: ${JSON.stringify(payload)}`);
 
       const response = await fetch(`${this.culqiApiUrl}/charges`, {
         method: 'POST',
@@ -18,25 +39,20 @@ export class CulqiService {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.secretKey}`,
         },
-        body: JSON.stringify({
-          amount: amountInCents,
-          currency_code: 'PEN', // Soles Peruanos
-          email: email,
-          source_id: tokenId, // El token que te mandó el frontend
-        }),
+        body: JSON.stringify(payload),
       });
 
       const data = await response.json();
 
-      // Si Culqi rechaza el pago (fondos insuficientes, tarjeta expirada)
+      // Si Culqi rechaza el pago
       if (data.object === 'error') {
-        throw new BadRequestException(`Error en el pago: ${data.user_message}`);
+        throw new BadRequestException(`Culqi rechazó la transacción: ${data.user_message || data.merchant_message}`);
       }
 
-      // Retornamos el ID del cargo exitoso
       return data.id; 
 
-    } catch (error) {
+    } catch (error: any) {
+      this.logger.error(`Error procesando pago con Culqi: ${error.message}`);
       if (error instanceof BadRequestException) throw error;
       throw new InternalServerErrorException('Error al comunicarse con la pasarela de pago');
     }
