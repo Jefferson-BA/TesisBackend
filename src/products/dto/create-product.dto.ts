@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional, MaxLength, IsNumber, IsPositive, IsInt, Min, IsUUID, IsUrl } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, MaxLength, IsNumber, IsPositive, IsInt, Min, IsUUID, IsUrl, IsBoolean } from 'class-validator';
 
 export class CreateProductDto {
   @IsString()
@@ -15,14 +15,18 @@ export class CreateProductDto {
   price!: number;
 
   @IsInt()
-  @Min(0) // El stock no puede ser negativo
+  @Min(0)
   stock!: number;
 
   @IsUrl()
   @IsOptional()
   imageUrl?: string;
 
-  // 👇 Para crear un producto, el admin DEBE enviar el ID de la categoría a la que pertenece
+  // 👇 Permitimos configurar la visibilidad al crearlo
+  @IsBoolean()
+  @IsOptional()
+  isActive?: boolean;
+
   @IsUUID()
   @IsNotEmpty()
   categoryId!: string; 

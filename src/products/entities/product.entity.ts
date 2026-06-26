@@ -32,6 +32,10 @@ export class Product {
   @Column({ type: 'varchar', nullable: true })
   imageUrl?: string;
 
+  // 👇 Nueva columna para el switch de Habilitado/Deshabilitado
+  @Column({ type: 'boolean', default: true })
+  isActive!: boolean;
+
   @Index() 
   @ManyToOne(() => Category, (category) => category.products, { eager: true })
   @JoinColumn({ name: 'category_id' })
@@ -43,6 +47,7 @@ export class Product {
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt!: Date;
 
+  // 👇 El "botón rojo" de borrado lógico
   @DeleteDateColumn({ name: 'deleted_at' })
   deletedAt?: Date;
 }

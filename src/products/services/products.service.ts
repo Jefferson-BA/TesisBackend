@@ -17,27 +17,35 @@ export class ProductsService {
     const existingProduct = await this.productRepository.findOne({ where: { name: createProductDto.name } });
     if (existingProduct) throw new ConflictException('Ya existe un producto con este nombre');
 
-    // Mapeamos el categoryId para que TypeORM entienda la relación
     const product = this.productRepository.create({
       ...createProductDto,
-      category: { id: createProductDto.categoryId } // 👈 Magia relacional de TypeORM
+      category: { id: createProductDto.categoryId }
     });
 
     return await this.productRepository.save(product);
   }
 
   async findAll(query: QueryProductDto) {
+    // Extraemos isActive usando 'as any' temporalmente por si aún no lo agregas a tu QueryProductDto
     const { limit = 10, page = 1, minPrice, maxPrice, category } = query;
-    const skip = (page - 1) * limit; // Calcula cuántos productos saltarse
+    const isActive = (query as any).isActive; 
+    
+    const skip = (page - 1) * limit;
 
     const where: FindOptionsWhere<Product> = {};
 
-    // 1. Filtro por categoría
+    // 👇 FILTRO EMPRESARIAL: Por defecto solo traemos productos activos.
+    // El admin puede enviar isActive=false o isActive=all para ver el resto.
+    if (isActive !== undefined && isActive !== 'all') {
+      where.isActive = String(isActive) === 'true';
+    } else if (isActive === undefined) {
+      where.isActive = true; 
+    }
+
     if (category) {
       where.category = { id: category };
     }
 
-    // 2. Filtros por rango de precio
     if (minPrice && maxPrice) {
       where.price = Between(minPrice, maxPrice);
     } else if (minPrice) {
@@ -46,12 +54,11 @@ export class ProductsService {
       where.price = LessThanOrEqual(maxPrice);
     }
 
-    // Buscamos los productos y contamos el total
     const [data, total] = await this.productRepository.findAndCount({
       where,
       take: limit,
       skip,
-      relations: ['category'], // Opcional si ya tienes eager:true en la entidad
+      relations: ['category'],
     });
 
     return {
@@ -74,7 +81,6 @@ export class ProductsService {
   async update(id: string, updateProductDto: UpdateProductDto) {
     const product = await this.findOne(id);
 
-    // Si el Admin quiere cambiar el producto de categoría, preparamos la actualización
     let categoryUpdate = {};
     if (updateProductDto.categoryId) {
       categoryUpdate = { category: { id: updateProductDto.categoryId } };
@@ -90,7 +96,10 @@ export class ProductsService {
 
   async remove(id: string) {
     const product = await this.findOne(id);
-    await this.productRepository.remove(product);
-    return { message: 'Producto eliminado del catálogo' };
+    
+
+    await this.productRepository.softRemove(product);
+    
+    return { message: 'Producto eliminado (archivado) exitosamente' };
   }
 }
