@@ -31,7 +31,7 @@ export class CreateOrderDto {
   @IsEnum(PaymentMethod)
   @IsOptional()
   paymentMethod?: PaymentMethod;
-  
+
   @IsNumber()
   @IsOptional()
   reservationId?: number;

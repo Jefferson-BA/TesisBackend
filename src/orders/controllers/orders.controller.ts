@@ -1,5 +1,14 @@
 import {
-  Controller, Get, Post, Body, Patch, Param, ParseIntPipe, Req, UseGuards, Query
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  ParseIntPipe,
+  Req,
+  UseGuards,
+  Query,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 
@@ -25,19 +34,19 @@ export class OrdersController {
   payOrder(
     @Param('id', ParseIntPipe) id: number,
     @Body() payOrderDto: PayOrderDto, // 👈 Se valida automáticamente con el DTO
-    @Req() req: any
+    @Req() req: any,
   ) {
     const userId = req.user.id;
     return this.ordersService.payOrder(id, userId, payOrderDto);
   }
 
   @Get()
-  findAll(
-    @Req() req: any,
-    @Query('reservationId') reservationId?: string
-  ) {
+  findAll(@Req() req: any, @Query('reservationId') reservationId?: string) {
     const userId = req.user.id;
-    return this.ordersService.findAll(userId, reservationId ? Number(reservationId) : undefined);
+    return this.ordersService.findAll(
+      userId,
+      reservationId ? Number(reservationId) : undefined,
+    );
   }
 
   @Get(':id')
@@ -51,7 +60,7 @@ export class OrdersController {
   @Roles('ADMIN', 'SUPERADMIN')
   updateStatus(
     @Param('id', ParseIntPipe) id: number,
-    @Body() updateOrderDto: UpdateOrderDto
+    @Body() updateOrderDto: UpdateOrderDto,
   ) {
     return this.ordersService.updateStatus(id, updateOrderDto);
   }

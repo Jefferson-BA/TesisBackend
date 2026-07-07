@@ -39,7 +39,7 @@ export class ChatbotService {
 
       // 3. Enviamos la petición usando el método estándar de OpenAI
       const response = await this.openai.chat.completions.create({
-        model: 'nex-agi/nex-n2-pro:free', // 👈 Tu modelo gratuito de OpenRouter
+        model: 'poolside/laguna-xs-2.1:free',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userMessage }

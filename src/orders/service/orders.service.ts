@@ -34,8 +34,7 @@ export class OrdersService {
     private readonly mailService: MailService,
     private readonly cartService: CartService,
     private readonly culqiService: CulqiService,
-  ) { }
-
+  ) {}
 
   async createOrder(userId: number, createOrderDto: CreateOrderDto) {
     const queryRunner = this.dataSource.createQueryRunner();
@@ -56,22 +55,31 @@ export class OrdersService {
         });
 
         if (!reservation) {
-          throw new NotFoundException(`La reserva #${createOrderDto.reservationId} no existe o no te pertenece.`);
+          throw new NotFoundException(
+            `La reserva #${createOrderDto.reservationId} no existe o no te pertenece.`,
+          );
         }
 
         if (reservation.status !== ReservationStatus.APPROVED) {
-          throw new BadRequestException('La reserva debe estar Aprobada para poder generar la orden de pago.');
+          throw new BadRequestException(
+            'La reserva debe estar Aprobada para poder generar la orden de pago.',
+          );
         }
 
         // Tomamos los datos de la reserva
-        finalShippingAddress = finalShippingAddress || reservation.venueAddress || 'Dirección no especificada';
+        finalShippingAddress =
+          finalShippingAddress ||
+          reservation.venueAddress ||
+          'Dirección no especificada';
         finalCity = finalCity || reservation.city || 'Ciudad no especificada';
 
         for (const resItem of reservation.items) {
           const product = resItem.product;
 
           if (product.stock < resItem.quantity) {
-            throw new BadRequestException(`No hay suficiente stock para: ${product.name}`);
+            throw new BadRequestException(
+              `No hay suficiente stock para: ${product.name}`,
+            );
           }
 
           product.stock -= resItem.quantity;
@@ -90,10 +98,14 @@ export class OrdersService {
       // 🛒 ESCENARIO B: Creación desde el CARRITO normal (Sin reserva)
       else {
         if (!createOrderDto.items || createOrderDto.items.length === 0) {
-          throw new BadRequestException('No se enviaron productos para crear la orden.');
+          throw new BadRequestException(
+            'No se enviaron productos para crear la orden.',
+          );
         }
         if (!finalShippingAddress) {
-          throw new BadRequestException('La dirección de envío es obligatoria para órdenes directas.');
+          throw new BadRequestException(
+            'La dirección de envío es obligatoria para órdenes directas.',
+          );
         }
 
         const productIds = createOrderDto.items.map((item) => item.productId);
@@ -108,10 +120,14 @@ export class OrdersService {
           const product = productsMap.get(dtoItem.productId);
 
           if (!product) {
-            throw new BadRequestException(`El producto con ID ${dtoItem.productId} no está disponible.`);
+            throw new BadRequestException(
+              `El producto con ID ${dtoItem.productId} no está disponible.`,
+            );
           }
           if (product.stock < dtoItem.quantity) {
-            throw new BadRequestException(`No hay suficiente stock para: ${product.name}`);
+            throw new BadRequestException(
+              `No hay suficiente stock para: ${product.name}`,
+            );
           }
 
           totalAmount += Number(product.price) * dtoItem.quantity;
@@ -135,7 +151,8 @@ export class OrdersService {
         city: finalCity,
         postalCode: createOrderDto.postalCode,
         phone: createOrderDto.phone,
-        paymentMethod: createOrderDto.paymentMethod || ('card' as PaymentMethod),
+        paymentMethod:
+          createOrderDto.paymentMethod || ('card' as PaymentMethod),
         reservationId: createOrderDto.reservationId,
         items: orderItems,
       });
@@ -144,7 +161,10 @@ export class OrdersService {
 
       const cart = await this.cartService.findOrCreateCart(userId);
       if (cart) {
-        await queryRunner.manager.query(`DELETE FROM cart_items WHERE "cartId" = $1`, [cart.id]);
+        await queryRunner.manager.query(
+          `DELETE FROM cart_items WHERE "cartId" = $1`,
+          [cart.id],
+        );
       }
 
       await queryRunner.commitTransaction();
@@ -154,13 +174,17 @@ export class OrdersService {
         orderId: savedOrder.id,
         message: 'Orden generada. Pendiente de pago.',
       };
-
     } catch (error) {
       await queryRunner.rollbackTransaction();
-      if (error instanceof BadRequestException || error instanceof NotFoundException) {
+      if (
+        error instanceof BadRequestException ||
+        error instanceof NotFoundException
+      ) {
         throw error;
       }
-      throw new InternalServerErrorException('Error al procesar la orden: ' + (error as Error).message);
+      throw new InternalServerErrorException(
+        'Error al procesar la orden: ' + (error as Error).message,
+      );
     } finally {
       await queryRunner.release();
     }
@@ -174,28 +198,34 @@ export class OrdersService {
 
     const order = await this.orderRepository.findOne({
       where: { id: orderId, userId },
-      relations: ['user']
+      relations: ['user'],
     });
 
     if (!order) {
-      throw new NotFoundException(`La orden #${orderId} no existe o no te pertenece.`);
+      throw new NotFoundException(
+        `La orden #${orderId} no existe o no te pertenece.`,
+      );
     }
 
     if (order.status !== OrderStatus.PENDING) {
-      throw new BadRequestException(`Esta orden ya fue procesada. Estado actual: ${order.status}`);
+      throw new BadRequestException(
+        `Esta orden ya fue procesada. Estado actual: ${order.status}`,
+      );
     }
 
     if (Number(order.totalAmount) !== Number(amount)) {
-      throw new BadRequestException('El monto enviado no coincide con el total de la orden.');
+      throw new BadRequestException(
+        'El monto enviado no coincide con el total de la orden.',
+      );
     }
 
     const customerEmail = email || order.user.email;
 
     try {
       const chargeId = await this.culqiService.createCharge(
-        Number(order.totalAmount), 
+        Number(order.totalAmount),
         customerEmail,
-        tokenId
+        tokenId,
       );
 
       // 1. Guardamos la orden como pagada
@@ -211,10 +241,9 @@ export class OrdersService {
 
       // 3. Actualizamos la Reserva asociada
       if (order.reservationId) {
-        await this.reservationRepository.update(
-          order.reservationId,
-          { status: ReservationStatus.FULLY_PAID }
-        );
+        await this.reservationRepository.update(order.reservationId, {
+          status: ReservationStatus.FULLY_PAID,
+        });
       }
 
       return {
@@ -222,13 +251,14 @@ export class OrdersService {
         message: 'Pago procesado exitosamente',
         chargeId,
         orderId: order.id,
-        status: order.status
+        status: order.status,
       };
-
     } catch (error: any) {
       order.status = OrderStatus.FAILED as any;
       await this.orderRepository.save(order);
-      throw new BadRequestException(error.message || 'La pasarela de pagos rechazó la transacción.');
+      throw new BadRequestException(
+        error.message || 'La pasarela de pagos rechazó la transacción.',
+      );
     }
   }
 
@@ -252,11 +282,14 @@ export class OrdersService {
 
       return {
         id: order.id,
-        fullName: user ? (user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim()) : 'No disponible',
+        fullName: user
+          ? user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim()
+          : 'No disponible',
         email: user?.email || 'No disponible',
         phone: user?.phone || 'No disponible',
         city: reservation?.city || order.city || 'No disponible',
-        address: reservation?.venueAddress || order.shippingAddress || 'No disponible',
+        address:
+          reservation?.venueAddress || order.shippingAddress || 'No disponible',
         postalCode: order.postalCode || 'No disponible',
         eventDate: reservation?.eventDate || 'No disponible',
         notes: reservation?.additionalNotes || 'Sin notas',
@@ -264,14 +297,16 @@ export class OrdersService {
         paymentMethod: order.paymentMethod || 'No especificado',
         status: order.status || 'Pendiente',
 
-        items: order.items ? order.items.map((item) => ({
-          id: item.id,
-          productId: item.productId,
-          name: (item.product as any)?.name || 'Producto no disponible',
-          price: Number(item.price || 0),
-          quantity: item.quantity,
-          subtotal: Number(item.price || 0) * item.quantity,
-        })) : [],
+        items: order.items
+          ? order.items.map((item) => ({
+              id: item.id,
+              productId: item.productId,
+              name: (item.product as any)?.name || 'Producto no disponible',
+              price: Number(item.price || 0),
+              quantity: item.quantity,
+              subtotal: Number(item.price || 0) * item.quantity,
+            }))
+          : [],
       };
     });
   }
@@ -283,7 +318,9 @@ export class OrdersService {
     });
 
     if (!order) {
-      throw new NotFoundException(`La orden #${id} no existe o no te pertenece.`);
+      throw new NotFoundException(
+        `La orden #${id} no existe o no te pertenece.`,
+      );
     }
     return order;
   }
