@@ -12,7 +12,7 @@ import {
   ManyToOne,
   JoinColumn,
   OneToOne,
-  Index // 👈 Importado
+  Index
 } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
 import { Exclude } from 'class-transformer';
@@ -49,6 +49,17 @@ export class User {
 
   @Column({ nullable: true })
   profileImage?: string;
+
+  // ==========================================
+  // ✨ NUEVOS CAMPOS AGREGADOS PARA PERFIL DE CLIENTE
+  // ==========================================
+  @Column({ type: 'varchar', nullable: true })
+  phone?: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  address?: string;
+
+  // ==========================================
 
   @CreateDateColumn()
   createdAt!: Date;

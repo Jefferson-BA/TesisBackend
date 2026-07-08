@@ -1,4 +1,4 @@
-import { IsEmail, IsNotEmpty, IsString, MinLength, MaxLength } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsString, MinLength, MaxLength, IsOptional } from 'class-validator';
 
 export class SignupDto {
   @IsString({ message: 'El nombre debe ser texto' })
@@ -15,7 +15,12 @@ export class SignupDto {
   @MaxLength(32, { message: 'La contraseña no puede exceder los 32 caracteres' })
   password!: string;
 
-  // Siendo un e-commerce para empresas (restaurantes/parrillas), 
+  // 🟢 ¡LA SOLUCIÓN AQUÍ! Declaramos el teléfono para que NestJS NO lo elimine
+  @IsOptional()
+  @IsString({ message: 'El teléfono debe ser una cadena de texto válido' })
+  phone?: string;
+
+  // Siendo un e-commerce para empresas (restaurantes/parrillas),
   // podrías requerir un RUC o nombre de empresa desde el inicio:
   // @IsString()
   // @IsOptional()

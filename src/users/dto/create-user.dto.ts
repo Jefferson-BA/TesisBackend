@@ -1,23 +1,23 @@
-import { IsEmail, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsOptional, IsString, IsEmail, IsNotEmpty } from 'class-validator';
 
 export class CreateUserDto {
+  @IsNotEmpty()
   @IsString()
-  @IsNotEmpty({ message: 'El nombre es requerido' })
-  name!: string;
+  name!: string; // 🟢 Se añade '!' para decirle a TS que se inicializará dinámicamente
 
-  @IsEmail({}, { message: 'Formato de email inválido' })
+  @IsEmail()
   @IsNotEmpty()
   email!: string;
 
-  @IsString()
-  @MinLength(8, { message: 'La contraseña debe tener al menos 8 caracteres' })
-  password! : string;
-
-  // Para crear el usuario, solemos enviar el ID del rol que le corresponde
   @IsNotEmpty()
-  roleId!: number; 
-
   @IsString()
+  password!: string;
+
+  // 🟢 IMPORTANTE: Si falta este campo, NestJS lo borra antes de pasarlo al servicio
   @IsOptional()
-  profileImage?: string;
+  @IsString()
+  phone?: string;
+
+  @IsOptional()
+  roleId?: number;
 }

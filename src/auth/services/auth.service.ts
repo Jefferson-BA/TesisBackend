@@ -26,10 +26,9 @@ export class AuthService {
       throw new InternalServerErrorException('Los roles no han sido inicializados en la base de datos');
     }
 
+    // 🟢 EXCELENTE: El operador spread (...) arrastra name, email, password Y EL PHONE de forma automática
     const newUser = await this.usersService.create({
-      name: signupDto.name,
-      email: signupDto.email,
-      password: signupDto.password,
+      ...signupDto,    
       roleId: role.id, 
     });
 
@@ -55,7 +54,6 @@ export class AuthService {
       throw new UnauthorizedException('Correo o contraseña incorrectos');
     }
 
-    // Usamos el ?.name por seguridad en caso de que las relaciones no vengan cargadas
     const userRoleName = user.role?.name || 'user';
 
     const payload = {
@@ -71,6 +69,7 @@ export class AuthService {
         name: user.name,
         email: user.email,
         role: userRoleName,
+        phone: (user as any).phone || "", // 🟢 AGREGADO: Mandamos el teléfono también en el Login para que el Frontend lo guarde en la sesión inmediatamente
       }
     };
   }
