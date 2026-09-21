@@ -109,7 +109,6 @@ export class ReservationsService {
       whereClause.status = In([
         ReservationStatus.PENDING_REVIEW,
         ReservationStatus.APPROVED,
-        ReservationStatus.DEPOSIT_PAID,
         ReservationStatus.FULLY_PAID,
       ]);
     } else if (status) {
@@ -173,6 +172,20 @@ export class ReservationsService {
       throw new NotFoundException(
         `La reserva con ID ${id} no existe.`,
       );
+    }
+
+    // --- MÁQUINA DE ESTADOS / VALIDACIÓN DE TRANSICIÓN ---
+    if (updateReservationDto.status && updateReservationDto.status !== reservation.status) {
+      const currentStatus = reservation.status;
+      const newStatus = updateReservationDto.status;
+
+      if (currentStatus === ReservationStatus.COMPLETED || currentStatus === ReservationStatus.CANCELLED) {
+        throw new BadRequestException(`No se puede actualizar el estado de una reserva que ya está terminada (${currentStatus}).`);
+      }
+
+      if (currentStatus === ReservationStatus.FULLY_PAID && newStatus !== ReservationStatus.COMPLETED) {
+        throw new BadRequestException(`Una reserva totalmente pagada (fully_paid) solo puede transicionar a completada (completed).`);
+      }
     }
 
     // Fusionamos los cambios que vienen del DTO (ya normalizados a minúsculas)
