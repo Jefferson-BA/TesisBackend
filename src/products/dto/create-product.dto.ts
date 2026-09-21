@@ -14,9 +14,9 @@ export class CreateProductDto {
   @IsPositive()
   price!: number;
 
-  @IsInt()
-  @Min(0)
-  stock!: number;
+  @IsBoolean()
+  @IsOptional()
+  isAvailable?: boolean;
 
   @IsUrl()
   @IsOptional()

@@ -20,7 +20,7 @@ export class ChatbotService {
       const { data: productosReales } = await this.productsService.findAll({ limit: 50 });
       
       const catalogoContexto = productosReales
-        .map(p => `- ${p.name}: $${p.price} (Stock disponible: ${p.stock})`)
+        .map(p => `- ${p.name}: $${p.price} (Disponible: ${p.isAvailable ? 'Sí' : 'No'})`)
         .join('\n');
 
       // 2. Definimos las instrucciones (System Prompt)

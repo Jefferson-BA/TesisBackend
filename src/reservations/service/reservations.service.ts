@@ -40,6 +40,12 @@ export class ReservationsService {
           );
         }
 
+        if (product.isAvailable === false) {
+          throw new BadRequestException(
+            `El servicio/producto '${product.name}' no se encuentra disponible actualmente.`,
+          );
+        }
+
         // Acumular montos basados en el precio pactado al momento
         totalAmount += Number(product.price) * item.quantity;
 

@@ -76,14 +76,11 @@ export class OrdersService {
         for (const resItem of reservation.items) {
           const product = resItem.product;
 
-          if (product.stock < resItem.quantity) {
+          if (product.isAvailable === false) {
             throw new BadRequestException(
-              `No hay suficiente stock para: ${product.name}`,
+              `El producto/servicio no está disponible actualmente: ${product.name}`,
             );
           }
-
-          product.stock -= resItem.quantity;
-          await queryRunner.manager.save(Product, product);
 
           totalAmount += Number(resItem.price) * resItem.quantity;
 
@@ -124,14 +121,13 @@ export class OrdersService {
               `El producto con ID ${dtoItem.productId} no está disponible.`,
             );
           }
-          if (product.stock < dtoItem.quantity) {
+          if (product.isAvailable === false) {
             throw new BadRequestException(
-              `No hay suficiente stock para: ${product.name}`,
+              `El producto/servicio no está disponible actualmente: ${product.name}`,
             );
           }
 
           totalAmount += Number(product.price) * dtoItem.quantity;
-          product.stock -= dtoItem.quantity;
 
           const orderItem = queryRunner.manager.create(OrderItem, {
             productId: product.id,
@@ -140,7 +136,6 @@ export class OrdersService {
           });
           orderItems.push(orderItem);
         }
-        await queryRunner.manager.save(Product, products);
       }
 
       const newOrder = queryRunner.manager.create(Order, {
