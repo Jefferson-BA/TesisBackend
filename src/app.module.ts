@@ -12,7 +12,7 @@ import { CategoriesModule } from './categories/categories.module';
 import { CartModule } from './cart/cart.module';
 import { OrdersModule } from './orders/orders.module';
 import { RolesModule } from './roles/roles.module';
-import { AdvertisementsModule } from './advertisements/advertisements.module';
+import { PromotionsModule } from './promotions/promotions.module';
 import { ReservationsModule } from './reservations/reservations.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { ChatbotModule } from './chatbot/chatbot.module';
@@ -42,7 +42,7 @@ import { ChatbotModule } from './chatbot/chatbot.module';
     CartModule,
     OrdersModule,
     RolesModule,
-    AdvertisementsModule,
+    PromotionsModule,
     ReservationsModule,
     DashboardModule,
     ChatbotModule, // 👈 Módulo del chatbot
