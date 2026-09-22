@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { Order } from '../../orders/entities/order.entity';
 import { Reservation } from '../../reservations/entities/reservation.entity';
+import { ReservationStatus } from '../../reservations/enums/reservations.enums';
+import { RoleType } from '../../roles/enums/role-type.enum';
 import { User } from '../../users/entities/user.entity';
 
 @Injectable()
@@ -16,10 +18,15 @@ export class DashboardService {
     const currentYear = new Date().getFullYear();
 
     // 1. Consultas Rápidas en Paralelo
-    const [totalOrders, totalReservations, totalUsers] = await Promise.all([
+    const [totalOrders, totalReservations, totalCustomers] = await Promise.all([
       orderRepository.count(),
       reservationRepository.count(),
-      userRepository.count(),
+      // Solo contamos usuarios con rol 'user' (clientes finales)
+      userRepository
+        .createQueryBuilder('user')
+        .leftJoin('user.role', 'role')
+        .where('role.name = :roleName', { roleName: RoleType.USER })
+        .getCount(),
     ]);
 
     // 2. Calcular Ingresos Reales con SQL (No traba la memoria del servidor)
@@ -45,25 +52,39 @@ export class DashboardService {
       salesMonthly[item.month - 1] = Number(item.total);
     });
 
-    // 4. Conteo de Estados de Reserva Real
-    const [pendingReservations, approvedReservations] = await Promise.all([
-      reservationRepository.count({ where: { status: 'pending_review' as any } }),
-      reservationRepository.count({ where: { status: 'approved' as any } }),
-    ]);
+    // 4. Conteo de los 5 estados de Reserva agrupados por status
+    const statusCountsRaw: { status: string; count: string }[] =
+      await reservationRepository
+        .createQueryBuilder('reservation')
+        .select('reservation.status', 'status')
+        .addSelect('COUNT(*)', 'count')
+        .groupBy('reservation.status')
+        .getRawMany();
+
+    // Convertimos el resultado a un mapa para acceso rápido
+    const statusMap = new Map<string, number>(
+      statusCountsRaw.map((row) => [row.status, Number(row.count)]),
+    );
+
+    // Si un estado no tiene registros devolvemos 0 (nunca null ni undefined)
+    const reservationsStatus = {
+      pending:    statusMap.get(ReservationStatus.PENDING_REVIEW) ?? 0,
+      approved:   statusMap.get(ReservationStatus.APPROVED)       ?? 0,
+      fully_paid: statusMap.get(ReservationStatus.FULLY_PAID)     ?? 0,
+      completed:  statusMap.get(ReservationStatus.COMPLETED)      ?? 0,
+      cancelled:  statusMap.get(ReservationStatus.CANCELLED)      ?? 0,
+    };
 
     return {
       cards: {
         totalEarnings: Number(totalEarnings || 0),
         totalReservations,
         totalOrders,
-        totalCustomers: totalUsers,
+        totalCustomers,
       },
       charts: {
         salesMonthly, // 👈 Ahora envía [0, 500, 120, ...] 100% basado en BD
-        reservationsStatus: {
-          pending: pendingReservations,
-          approved: approvedReservations,
-        },
+        reservationsStatus,
       },
     };
   }
