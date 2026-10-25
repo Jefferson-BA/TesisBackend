@@ -70,6 +70,8 @@ export class ReservationsService {
         totalAmount,
         status: ReservationStatus.PENDING_REVIEW,
         items: reservationItems,
+        termsAcceptedAt: dto.acceptedTerms ? new Date() : undefined,
+        privacyAcceptedAt: dto.acceptedPrivacy ? new Date() : undefined,
       });
 
       // Guardar en cascada (cabecera + items)

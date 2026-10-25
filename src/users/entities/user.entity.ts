@@ -60,6 +60,14 @@ export class User {
   address?: string;
 
   // ==========================================
+  // ✨ TÉRMINOS Y CONDICIONES (Auditoría)
+  // ==========================================
+  @Column({ type: 'timestamptz', nullable: true })
+  termsAcceptedAt?: Date;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  privacyAcceptedAt?: Date;
+  // ==========================================
 
   @CreateDateColumn()
   createdAt!: Date;

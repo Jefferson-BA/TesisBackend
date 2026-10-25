@@ -52,16 +52,16 @@ export class PromotionsService {
    */
   async findActive(): Promise<Promotion[]> {
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const todayStr = today.toISOString().split('T')[0];
 
-    return await this.promotionRepository.find({
-      where: {
-        isActive: true,
-        startDate: LessThanOrEqual(today),
-        endDate: MoreThanOrEqual(today),
-      },
-      order: { startDate: 'ASC' },
-    });
+    return await this.promotionRepository.createQueryBuilder('promotion')
+      .leftJoinAndSelect('promotion.product', 'product')
+      .leftJoinAndSelect('promotion.category', 'category')
+      .where('promotion.isActive = :isActive', { isActive: true })
+      .andWhere('promotion.startDate <= :today', { today: todayStr })
+      .andWhere('promotion.endDate >= :today', { today: todayStr })
+      .orderBy('promotion.startDate', 'ASC')
+      .getMany();
   }
 
   async findOne(id: number): Promise<Promotion> {

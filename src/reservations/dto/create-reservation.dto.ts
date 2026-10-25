@@ -6,6 +6,7 @@ import {
   IsOptional,
   IsArray,
   ValidateNested,
+  Equals,
 } from 'class-validator';
 
 import { Type } from 'class-transformer';
@@ -49,4 +50,10 @@ export class CreateReservationDto {
   @ValidateNested({ each: true })
   @Type(() => ReservationItemDto)
   items!: ReservationItemDto[];
+
+  @Equals(true, { message: 'Debe aceptar los Términos y Condiciones' })
+  acceptedTerms!: boolean;
+
+  @Equals(true, { message: 'Debe aceptar la Política de Privacidad' })
+  acceptedPrivacy!: boolean;
 }

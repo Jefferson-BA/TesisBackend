@@ -45,6 +45,16 @@ export class Reservation {
   @Column({ type: 'text', nullable: true })
   additionalNotes?: string; 
 
+  // ==========================================
+  // ✨ TÉRMINOS Y CONDICIONES (Auditoría)
+  // ==========================================
+  @Column({ type: 'timestamptz', nullable: true })
+  termsAcceptedAt?: Date;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  privacyAcceptedAt?: Date;
+  // ==========================================
+
   // 🚨 CORRECCIÓN ARQUITECTÓNICA: 
   // Eliminamos el `orderId` físico de aquí. La Reserva no guarda el ID de la orden.
   // La Orden guarda el ID de la Reserva. Por lo tanto, aquí es un OneToMany.

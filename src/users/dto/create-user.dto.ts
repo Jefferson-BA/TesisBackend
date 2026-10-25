@@ -20,4 +20,10 @@ export class CreateUserDto {
 
   @IsOptional()
   roleId?: number;
+
+  @IsOptional()
+  termsAcceptedAt?: Date;
+
+  @IsOptional()
+  privacyAcceptedAt?: Date;
 }

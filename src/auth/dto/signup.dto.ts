@@ -1,4 +1,4 @@
-import { IsEmail, IsNotEmpty, IsString, MinLength, MaxLength, IsOptional } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsString, MinLength, MaxLength, IsOptional, Equals } from 'class-validator';
 
 export class SignupDto {
   @IsString({ message: 'El nombre debe ser texto' })
@@ -25,4 +25,10 @@ export class SignupDto {
   // @IsString()
   // @IsOptional()
   // companyName?: string;
+
+  @Equals(true, { message: 'Debe aceptar los Términos y Condiciones' })
+  acceptedTerms!: boolean;
+
+  @Equals(true, { message: 'Debe aceptar la Política de Privacidad' })
+  acceptedPrivacy!: boolean;
 }

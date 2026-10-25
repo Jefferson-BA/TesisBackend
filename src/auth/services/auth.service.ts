@@ -29,7 +29,9 @@ export class AuthService {
     // 🟢 EXCELENTE: El operador spread (...) arrastra name, email, password Y EL PHONE de forma automática
     const newUser = await this.usersService.create({
       ...signupDto,    
-      roleId: role.id, 
+      roleId: role.id,
+      termsAcceptedAt: signupDto.acceptedTerms ? new Date() : undefined,
+      privacyAcceptedAt: signupDto.acceptedPrivacy ? new Date() : undefined,
     });
 
     return {

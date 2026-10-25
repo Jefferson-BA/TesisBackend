@@ -3,7 +3,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsBoolean,
-  IsDateString,
+  IsDate,
   IsEnum,
   IsNumber,
   IsPositive,
@@ -13,6 +13,7 @@ import {
   ValidateIf,
   IsInt,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { DiscountType, ApplyTo } from '../enums/promotion.enums';
 
 export class CreatePromotionDto {
@@ -76,11 +77,13 @@ export class CreatePromotionDto {
   categoryId?: string;
 
   // ── Vigencia ─────────────────────────────────────────────────────────────
-  @IsDateString()
+  @IsDate()
+  @Type(() => Date)
   @IsNotEmpty()
   startDate!: Date;
 
-  @IsDateString()
+  @IsDate()
+  @Type(() => Date)
   @IsNotEmpty()
   endDate!: Date;
 

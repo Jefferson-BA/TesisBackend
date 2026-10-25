@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
-import { ConfigModule } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { ProductsModule } from './products/products.module';
@@ -23,16 +23,42 @@ import { ChatbotModule } from './chatbot/chatbot.module';
       isGlobal: true,
     }),
 
-    TypeOrmModule.forRoot({
-      type: process.env.DB_TYPE as any,
-      host: process.env.DB_HOST,
-      port: +(process.env.DB_PORT || 5432),
-      username: process.env.DB_USERNAME,
-      password: process.env.DB_PASSWORD,
-      database: process.env.DB_NAME,
+    TypeOrmModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => {
+        const dbUrl = configService.get<string>('DATABASE_URL');
+        const isSync = configService.get<string>('TYPEORM_SYNC') === 'true';
 
-      autoLoadEntities: true,
-      synchronize: true,
+        // Conexión para Producción / Staging (Usa DATABASE_URL de Neon con SSL)
+        if (dbUrl) {
+          return {
+            type: 'postgres',
+            url: dbUrl,
+            autoLoadEntities: true,
+            synchronize: isSync,
+            ssl: {
+              rejectUnauthorized: false, // Obligatorio para Neon
+            },
+          };
+        }
+
+        // Conexión para Desarrollo Local (Usa variables individuales)
+        const host = configService.get<string>('DB_HOST', 'localhost');
+        const isNeonHost = host.includes('neon.tech');
+
+        return {
+          type: (configService.get<string>('DB_TYPE') || 'postgres') as any,
+          host: host,
+          port: configService.get<number>('DB_PORT', 5432),
+          username: configService.get<string>('DB_USERNAME', 'postgres'),
+          password: configService.get<string>('DB_PASSWORD'),
+          database: configService.get<string>('DB_NAME'),
+          autoLoadEntities: true,
+          synchronize: isSync,
+          ssl: isNeonHost ? { rejectUnauthorized: false } : false,
+        };
+      },
     }),
 
     AuthModule,
@@ -45,7 +71,7 @@ import { ChatbotModule } from './chatbot/chatbot.module';
     PromotionsModule,
     ReservationsModule,
     DashboardModule,
-    ChatbotModule, // 👈 Módulo del chatbot
+    ChatbotModule,
   ],
   controllers: [AppController],
   providers: [AppService],
