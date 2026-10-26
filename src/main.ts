@@ -14,10 +14,14 @@ import {
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // ✅ Configuración de CORS
+  // ✅ Configuración de CORS habilitando Vercel y Localhost
   app.enableCors({
-    origin: 'http://localhost:4321',
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    origin: [
+      'https://tesis-frontend-gilt.vercel.app', // Dominio de tu frontend en Vercel
+      'http://localhost:4321',                 // Astro en local
+      'http://localhost:3000',
+    ],
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
   });
 
@@ -50,14 +54,12 @@ async function bootstrap() {
 
   SwaggerModule.setup('api', app, document);
 
-  // ✅ Puerto
-  await app.listen(3000);
+  // ✅ Puerto dinámico para producción en Render
+  const port = process.env.PORT || 3000;
+  await app.listen(port);
 
-  console.log(`🚀 Servidor corriendo en:
-  http://localhost:3000`);
-
-  console.log(`📚 Swagger disponible en:
-  http://localhost:3000/api`);
+  console.log(`🚀 Servidor corriendo en el puerto: ${port}`);
+  console.log(`📚 Swagger disponible en: /api`);
 }
 
 bootstrap();
