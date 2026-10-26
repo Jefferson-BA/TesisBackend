@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   InternalServerErrorException,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, DataSource } from 'typeorm';
@@ -23,6 +24,8 @@ import { CulqiService } from '../../payments/service/culqi.service';
 
 @Injectable()
 export class OrdersService {
+  private readonly logger = new Logger(OrdersService.name);
+
   constructor(
     @InjectRepository(Order)
     private readonly orderRepository: Repository<Order>,
@@ -216,29 +219,52 @@ export class OrdersService {
 
     const customerEmail = email || order.user.email;
 
+    // ====================================================================
+    // PASO 1: Cobro con Culqi (Único punto donde un fallo es HTTP 400 / FAILED)
+    // ====================================================================
+    let chargeId: string;
     try {
-      const chargeId = await this.culqiService.createCharge(
+      chargeId = await this.culqiService.createCharge(
         Number(order.totalAmount),
         customerEmail,
         tokenId,
       );
-
-      // 1. Guardamos la orden como pagada
-      order.status = OrderStatus.PAID as any;
-      await this.orderRepository.save(order);
-
-      // 2. Enviamos el correo
-      this.mailService.sendOrderConfirmation(
-        customerEmail,
-        order.id,
-        order.totalAmount,
+    } catch (culqiError: any) {
+      await this.orderRepository.update(order.id, {
+        status: OrderStatus.FAILED,
+      });
+      throw new BadRequestException(
+        culqiError.message || 'La pasarela de pagos rechazó la transacción.',
       );
+    }
 
-      // 3. Actualizamos la Reserva asociada
+    // ====================================================================
+    // PASO 2: Post-Procesamiento (El dinero YA fue cobrado en Culqi)
+    // ====================================================================
+    try {
+      // 1. Actualización directa del estado en BD (evita problemas de cascadas/hooks de save)
+      await this.orderRepository.update(order.id, {
+        status: OrderStatus.PAID,
+      });
+
+      // 2. Si la orden provino de una reserva, actualizar estado a FULLY_PAID
       if (order.reservationId) {
         await this.reservationRepository.update(order.reservationId, {
           status: ReservationStatus.FULLY_PAID,
         });
+      }
+
+      // 3. Envío de correo protegido (no debe abortar la transacción si falla SMTP)
+      try {
+        await this.mailService.sendOrderConfirmation(
+          customerEmail,
+          order.id,
+          order.totalAmount,
+        );
+      } catch (mailError: any) {
+        this.logger.warn(
+          `Pago procesado exitosamente pero falló el envío de correo para la orden #${order.id}: ${mailError?.message || mailError}`,
+        );
       }
 
       return {
@@ -246,13 +272,16 @@ export class OrdersService {
         message: 'Pago procesado exitosamente',
         chargeId,
         orderId: order.id,
-        status: order.status,
+        status: OrderStatus.PAID,
       };
-    } catch (error: any) {
-      order.status = OrderStatus.FAILED as any;
-      await this.orderRepository.save(order);
-      throw new BadRequestException(
-        error.message || 'La pasarela de pagos rechazó la transacción.',
+    } catch (dbError: any) {
+      this.logger.error(
+        `ALERTA CRÍTICA: Cobro exitoso en Culqi (Charge ID: ${chargeId}) pero falló la actualización en BD para orden #${order.id}. Error: ${dbError.message}`,
+        dbError.stack,
+      );
+
+      throw new InternalServerErrorException(
+        `El pago fue procesado exitosamente por Culqi (ID: ${chargeId}), pero ocurrió un error al confirmar la orden en el sistema. Por favor contacte a soporte con este identificador.`,
       );
     }
   }
