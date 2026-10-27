@@ -68,6 +68,9 @@ export class Order {
   })
   paymentMethod!: PaymentMethod;
 
+  @Column({ nullable: true })
+  chargeId?: string;
+
   @OneToMany(() => OrderItem, (item) => item.order, {
     cascade: true,
   })

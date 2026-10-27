@@ -16,6 +16,7 @@ import { PromotionsModule } from './promotions/promotions.module';
 import { ReservationsModule } from './reservations/reservations.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { ChatbotModule } from './chatbot/chatbot.module';
+import { SuperadminModule } from './superadmin/superadmin.module';
 
 @Module({
   imports: [
@@ -28,7 +29,7 @@ import { ChatbotModule } from './chatbot/chatbot.module';
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => {
         const dbUrl = configService.get<string>('DATABASE_URL');
-        const isSync = configService.get<string>('TYPEORM_SYNC') === 'true';
+        const isSync = (configService.get<string>('TYPEORM_SYNC') || '').toLowerCase() === 'true';
 
         // Conexión para Producción / Staging (Usa DATABASE_URL de Neon con SSL)
         if (dbUrl) {
@@ -72,6 +73,7 @@ import { ChatbotModule } from './chatbot/chatbot.module';
     ReservationsModule,
     DashboardModule,
     ChatbotModule,
+    SuperadminModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -245,6 +245,7 @@ export class OrdersService {
       // 1. Actualización directa del estado en BD (evita problemas de cascadas/hooks de save)
       await this.orderRepository.update(order.id, {
         status: OrderStatus.PAID,
+        chargeId: chargeId,
       });
 
       // 2. Si la orden provino de una reserva, actualizar estado a FULLY_PAID

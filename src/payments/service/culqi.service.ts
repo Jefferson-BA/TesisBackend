@@ -57,4 +57,52 @@ export class CulqiService {
       throw new InternalServerErrorException('Error al comunicarse con la pasarela de pago');
     }
   }
-}
+
+  /**
+   * 🔄 PROCESAR DEVOLUCIÓN / REEMBOLSO (Culqi Refund)
+   * Permite anular o devolver un cobro total o parcial
+   */
+  async createRefund(chargeId: string, amount?: number, reason: string = 'solicitud_comprador') {
+    try {
+      if (!chargeId) {
+        throw new BadRequestException('El ID del cargo de Culqi (chargeId) es requerido para procesar el reembolso.');
+      }
+
+      const payload: Record<string, any> = {
+        charge_id: chargeId,
+        reason: reason || 'solicitud_comprador',
+      };
+
+      if (amount !== undefined && amount !== null) {
+        if (isNaN(Number(amount)) || Number(amount) <= 0) {
+          throw new BadRequestException(`El monto de reembolso es inválido: ${amount}`);
+        }
+        payload.amount = Math.round(Number(amount) * 100);
+      }
+
+      this.logger.debug(`Enviando solicitud de reembolso a Culqi: ${JSON.stringify(payload)}`);
+
+      const response = await fetch(`${this.culqiApiUrl}/refunds`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.secretKey}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+
+      if (data.object === 'error') {
+        throw new BadRequestException(`Culqi rechazó el reembolso: ${data.user_message || data.merchant_message}`);
+      }
+
+      this.logger.log(`Reembolso exitoso en Culqi para cargo ${chargeId}. Refund ID: ${data.id}`);
+      return data;
+    } catch (error: any) {
+      this.logger.error(`Error procesando reembolso con Culqi: ${error.message}`);
+      if (error instanceof BadRequestException) throw error;
+      throw new InternalServerErrorException('Error al comunicarse con la pasarela de pago para el reembolso');
+    }
+  }
+}
