@@ -1,17 +1,22 @@
+import { join } from 'node:path';
 import 'dotenv/config';
 import { DataSource } from 'typeorm';
 
+const extension = __filename.endsWith('.ts') ? 'ts' : 'js';
+const entities = [join(__dirname, 'src', '**', '*.entity.' + extension)];
+const migrations = [join(__dirname, 'src', 'migrations', '*.' + extension)];
 const dbUrl = process.env.DATABASE_URL;
 const host = process.env.DB_HOST || 'localhost';
-const isNeon = host.includes('neon.tech') || (dbUrl && dbUrl.includes('neon.tech'));
+const isNeon =
+  host.includes('neon.tech') || (dbUrl && dbUrl.includes('neon.tech'));
 
 export default new DataSource(
   dbUrl
     ? {
         type: 'postgres',
         url: dbUrl,
-        entities: ['src/**/*.entity.ts', 'dist/**/*.entity.js'],
-        migrations: ['src/migrations/*.ts', 'dist/migrations/*.js'],
+        entities,
+        migrations,
         synchronize: false,
         ssl: {
           rejectUnauthorized: false,
@@ -25,8 +30,8 @@ export default new DataSource(
         password: process.env.DB_PASSWORD,
         database: process.env.DB_NAME,
 
-        entities: ['src/**/*.entity.ts', 'dist/**/*.entity.js'],
-        migrations: ['src/migrations/*.ts', 'dist/migrations/*.js'],
+        entities,
+        migrations,
 
         synchronize: false,
         ssl: isNeon ? { rejectUnauthorized: false } : false,

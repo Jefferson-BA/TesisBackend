@@ -1,3 +1,4 @@
+import type { AuthenticatedRequest } from '../../auth/interfaces/authenticated-request.interface';
 import {
   Controller,
   Get,
@@ -24,7 +25,9 @@ import { SuperadminUpdateUserDto } from './dto/superadmin-update-user.dto';
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 @Roles('SUPERADMIN')
 export class SuperadminUsersController {
-  constructor(private readonly superadminUsersService: SuperadminUsersService) {}
+  constructor(
+    private readonly superadminUsersService: SuperadminUsersService,
+  ) {}
 
   @Get()
   findAll(@Query() queryDto: ListSuperadminUsersDto) {
@@ -40,29 +43,44 @@ export class SuperadminUsersController {
   updateRole(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateUserRoleDto,
-    @Req() req: any,
+    @Req() req: AuthenticatedRequest,
   ) {
     const clientInfo = getClientInfo(req);
-    return this.superadminUsersService.updateRole(id, req.user.id, dto, clientInfo);
+    return this.superadminUsersService.updateRole(
+      id,
+      req.user.id,
+      dto,
+      clientInfo,
+    );
   }
 
   @Patch(':id/status')
   updateStatus(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateUserStatusDto,
-    @Req() req: any,
+    @Req() req: AuthenticatedRequest,
   ) {
     const clientInfo = getClientInfo(req);
-    return this.superadminUsersService.updateStatus(id, req.user.id, dto, clientInfo);
+    return this.superadminUsersService.updateStatus(
+      id,
+      req.user.id,
+      dto,
+      clientInfo,
+    );
   }
 
   @Patch(':id/profile')
   updateProfile(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: SuperadminUpdateUserDto,
-    @Req() req: any,
+    @Req() req: AuthenticatedRequest,
   ) {
     const clientInfo = getClientInfo(req);
-    return this.superadminUsersService.updateProfile(id, req.user.id, dto, clientInfo);
+    return this.superadminUsersService.updateProfile(
+      id,
+      req.user.id,
+      dto,
+      clientInfo,
+    );
   }
 }

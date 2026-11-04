@@ -10,7 +10,10 @@ export class UpdateUserStatusDto {
   @MinLength(5, { message: 'El motivo debe tener al menos 5 caracteres' })
   reason!: string;
 
-  @IsNotEmpty({ message: 'Debes ingresar tu contraseña de superadmin para confirmar esta acción' })
+  @IsNotEmpty({
+    message:
+      'Debes ingresar tu contraseña de superadmin para confirmar esta acción',
+  })
   @IsString()
   superadminPassword!: string;
 }

@@ -1,4 +1,12 @@
-import { IsEmail, IsNotEmpty, IsString, MinLength, MaxLength, IsOptional, Equals } from 'class-validator';
+import {
+  IsEmail,
+  IsNotEmpty,
+  IsString,
+  MinLength,
+  MaxLength,
+  IsOptional,
+  Equals,
+} from 'class-validator';
 
 export class SignupDto {
   @IsString({ message: 'El nombre debe ser texto' })
@@ -12,7 +20,9 @@ export class SignupDto {
   @IsString()
   @IsNotEmpty({ message: 'La contraseña es obligatoria' })
   @MinLength(8, { message: 'La contraseña debe tener al menos 8 caracteres' })
-  @MaxLength(32, { message: 'La contraseña no puede exceder los 32 caracteres' })
+  @MaxLength(32, {
+    message: 'La contraseña no puede exceder los 32 caracteres',
+  })
   password!: string;
 
   // 🟢 ¡LA SOLUCIÓN AQUÍ! Declaramos el teléfono para que NestJS NO lo elimine

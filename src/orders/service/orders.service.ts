@@ -3,7 +3,6 @@ import {
   NotFoundException,
   BadRequestException,
   InternalServerErrorException,
-  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, DataSource } from 'typeorm';
@@ -17,34 +16,30 @@ import { OrderItem } from '../entities/order-item.entity';
 import { Reservation } from '../../reservations/entities/reservation.entity';
 import { ReservationStatus } from '../../reservations/enums/reservations.enums';
 
-import { MailService } from '../../mail/mail.service';
-import { CartService } from '../../cart/service/cart.service';
 import { OrderStatus, PaymentMethod } from '../enums/order.enums';
-import { CulqiService } from '../../payments/service/culqi.service';
+import { PaymentService } from '../../payments/service/payment.service';
+import { PromotionsService } from '../../promotions/services/promotions.service';
+import { SettingsService } from '../../settings/settings.service';
+import { PaymentAttempt } from '../../payments/entities/payment-attempt.entity';
+import { Cart } from '../../cart/entities/cart.entity';
+import { CartItem } from '../../cart/entities/cart-item.entity';
 
 @Injectable()
 export class OrdersService {
-  private readonly logger = new Logger(OrdersService.name);
-
   constructor(
     @InjectRepository(Order)
     private readonly orderRepository: Repository<Order>,
-    @InjectRepository(Product)
-    private readonly productRepository: Repository<Product>,
-    @InjectRepository(Reservation)
-    private readonly reservationRepository: Repository<Reservation>,
     private readonly dataSource: DataSource,
-    private readonly mailService: MailService,
-    private readonly cartService: CartService,
-    private readonly culqiService: CulqiService,
+    private readonly paymentService: PaymentService,
+    private readonly promotionsService: PromotionsService,
+    private readonly settings: SettingsService,
   ) {}
 
   async createOrder(userId: number, createOrderDto: CreateOrderDto) {
     const queryRunner = this.dataSource.createQueryRunner();
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
-
     try {
+      await queryRunner.connect();
+      await queryRunner.startTransaction();
       let totalAmount = 0;
       const orderItems: OrderItem[] = [];
       let finalShippingAddress = createOrderDto.shippingAddress;
@@ -52,9 +47,10 @@ export class OrdersService {
 
       // 🌟 ESCENARIO A: Creación desde una RESERVA (Single Source of Truth)
       if (createOrderDto.reservationId) {
-        const reservation = await this.reservationRepository.findOne({
+        const reservation = await queryRunner.manager.findOne(Reservation, {
           where: { id: createOrderDto.reservationId, userId },
           relations: ['items', 'items.product'],
+          lock: { mode: 'pessimistic_write', tables: ['reservations'] },
         });
 
         if (!reservation) {
@@ -69,6 +65,22 @@ export class OrdersService {
           );
         }
 
+        const existingOrder = await queryRunner.manager.findOne(Order, {
+          where: {
+            reservationId: reservation.id,
+            status: In([
+              OrderStatus.PENDING,
+              OrderStatus.PAID,
+              OrderStatus.SHIPPED,
+              OrderStatus.DELIVERED,
+            ]),
+          },
+        });
+        if (existingOrder)
+          throw new BadRequestException(
+            'La reserva ya tiene una orden vigente',
+          );
+
         // Tomamos los datos de la reserva
         finalShippingAddress =
           finalShippingAddress ||
@@ -79,9 +91,9 @@ export class OrdersService {
         for (const resItem of reservation.items) {
           const product = resItem.product;
 
-          if (product.isAvailable === false) {
+          if (!product || !product.isActive || product.isAvailable === false) {
             throw new BadRequestException(
-              `El producto/servicio no está disponible actualmente: ${product.name}`,
+              `El producto/servicio no está disponible actualmente: ${product?.name || 'no disponible'}`,
             );
           }
 
@@ -108,10 +120,18 @@ export class OrdersService {
           );
         }
 
+        if (
+          new Set(createOrderDto.items.map((item) => item.productId)).size !==
+          createOrderDto.items.length
+        )
+          throw new BadRequestException(
+            'Agrupa los productos repetidos en una sola linea',
+          );
         const productIds = createOrderDto.items.map((item) => item.productId);
         const products = await queryRunner.manager.find(Product, {
           where: { id: In(productIds) },
-          lock: { mode: 'pessimistic_write' },
+          relations: ['category'],
+          lock: { mode: 'pessimistic_write', tables: ['products'] },
         });
 
         const productsMap = new Map(products.map((p) => [p.id, p]));
@@ -124,23 +144,53 @@ export class OrdersService {
               `El producto con ID ${dtoItem.productId} no está disponible.`,
             );
           }
-          if (product.isAvailable === false) {
+          if (!product || !product.isActive || product.isAvailable === false) {
             throw new BadRequestException(
-              `El producto/servicio no está disponible actualmente: ${product.name}`,
+              `El producto/servicio no está disponible actualmente: ${product?.name || 'no disponible'}`,
             );
           }
 
-          totalAmount += Number(product.price) * dtoItem.quantity;
+          const promotion =
+            await this.promotionsService.findActivePromotionForProduct(
+              product.id,
+              product.category?.id,
+              queryRunner.manager,
+            );
+          const price = promotion
+            ? this.promotionsService.calculateDiscountedPrice(
+                Number(product.price),
+                promotion,
+                dtoItem.quantity,
+              )
+            : Number(product.price);
+          totalAmount += (Math.round(price * 100) * dtoItem.quantity) / 100;
 
           const orderItem = queryRunner.manager.create(OrderItem, {
             productId: product.id,
             quantity: dtoItem.quantity,
-            price: product.price,
+            price,
           });
           orderItems.push(orderItem);
         }
       }
 
+      if (createOrderDto.reservationId) {
+        const reservation = await queryRunner.manager.findOneByOrFail(
+          Reservation,
+          { id: createOrderDto.reservationId },
+        );
+        totalAmount = Number(reservation.totalAmount);
+      } else {
+        const totals = await this.settings.totals(
+          totalAmount,
+          queryRunner.manager,
+        );
+        if (totals.subtotal < totals.minimum)
+          throw new BadRequestException(
+            'No se cumple el monto minimo del pedido',
+          );
+        totalAmount = totals.total;
+      }
       const newOrder = queryRunner.manager.create(Order, {
         userId,
         totalAmount,
@@ -157,32 +207,30 @@ export class OrdersService {
 
       const savedOrder = await queryRunner.manager.save(Order, newOrder);
 
-      const cart = await this.cartService.findOrCreateCart(userId);
-      if (cart) {
-        await queryRunner.manager.query(
-          `DELETE FROM cart_items WHERE "cartId" = $1`,
-          [cart.id],
-        );
-      }
+      const cart = await queryRunner.manager.findOne(Cart, {
+        where: { user: { id: userId } },
+      });
+      if (cart && !createOrderDto.reservationId)
+        await queryRunner.manager.delete(CartItem, { cart: { id: cart.id } });
 
       await queryRunner.commitTransaction();
 
       return {
         success: true,
         orderId: savedOrder.id,
+        totalAmount: savedOrder.totalAmount,
         message: 'Orden generada. Pendiente de pago.',
       };
     } catch (error) {
-      await queryRunner.rollbackTransaction();
+      if (queryRunner.isTransactionActive)
+        await queryRunner.rollbackTransaction();
       if (
         error instanceof BadRequestException ||
         error instanceof NotFoundException
       ) {
         throw error;
       }
-      throw new InternalServerErrorException(
-        'Error al procesar la orden: ' + (error as Error).message,
-      );
+      throw new InternalServerErrorException('No se pudo procesar la orden');
     } finally {
       await queryRunner.release();
     }
@@ -192,107 +240,17 @@ export class OrdersService {
    * 💳 PASO 2: PROCESAR EL PAGO (Culqi)
    */
   async payOrder(orderId: number, userId: number, payOrderDto: PayOrderDto) {
-    const { tokenId, amount, email } = payOrderDto;
+    return this.paymentService.pay(orderId, userId, payOrderDto);
+  }
 
-    const order = await this.orderRepository.findOne({
-      where: { id: orderId, userId },
-      relations: ['user'],
-    });
-
-    if (!order) {
-      throw new NotFoundException(
-        `La orden #${orderId} no existe o no te pertenece.`,
-      );
-    }
-
-    if (order.status !== OrderStatus.PENDING) {
-      throw new BadRequestException(
-        `Esta orden ya fue procesada. Estado actual: ${order.status}`,
-      );
-    }
-
-    if (Number(order.totalAmount) !== Number(amount)) {
-      throw new BadRequestException(
-        'El monto enviado no coincide con el total de la orden.',
-      );
-    }
-
-    const customerEmail = email || order.user.email;
-
-    // ====================================================================
-    // PASO 1: Cobro con Culqi (Único punto donde un fallo es HTTP 400 / FAILED)
-    // ====================================================================
-    let chargeId: string;
-    try {
-      chargeId = await this.culqiService.createCharge(
-        Number(order.totalAmount),
-        customerEmail,
-        tokenId,
-      );
-    } catch (culqiError: any) {
-      await this.orderRepository.update(order.id, {
-        status: OrderStatus.FAILED,
-      });
-      throw new BadRequestException(
-        culqiError.message || 'La pasarela de pagos rechazó la transacción.',
-      );
-    }
-
-    // ====================================================================
-    // PASO 2: Post-Procesamiento (El dinero YA fue cobrado en Culqi)
-    // ====================================================================
-    try {
-      // 1. Actualización directa del estado en BD (evita problemas de cascadas/hooks de save)
-      await this.orderRepository.update(order.id, {
-        status: OrderStatus.PAID,
-        chargeId: chargeId,
-      });
-
-      // 2. Si la orden provino de una reserva, actualizar estado a FULLY_PAID
-      if (order.reservationId) {
-        await this.reservationRepository.update(order.reservationId, {
-          status: ReservationStatus.FULLY_PAID,
-        });
-      }
-
-      // 3. Envío de correo protegido (no debe abortar la transacción si falla SMTP)
-      try {
-        await this.mailService.sendOrderConfirmation(
-          customerEmail,
-          order.id,
-          order.totalAmount,
-        );
-      } catch (mailError: any) {
-        this.logger.warn(
-          `Pago procesado exitosamente pero falló el envío de correo para la orden #${order.id}: ${mailError?.message || mailError}`,
-        );
-      }
-
-      return {
-        success: true,
-        message: 'Pago procesado exitosamente',
-        chargeId,
-        orderId: order.id,
-        status: OrderStatus.PAID,
-      };
-    } catch (dbError: any) {
-      this.logger.error(
-        `ALERTA CRÍTICA: Cobro exitoso en Culqi (Charge ID: ${chargeId}) pero falló la actualización en BD para orden #${order.id}. Error: ${dbError.message}`,
-        dbError.stack,
-      );
-
-      throw new InternalServerErrorException(
-        `El pago fue procesado exitosamente por Culqi (ID: ${chargeId}), pero ocurrió un error al confirmar la orden en el sistema. Por favor contacte a soporte con este identificador.`,
-      );
-    }
+  paymentStatus(orderId: number, userId: number) {
+    return this.paymentService.status(orderId, userId);
   }
 
   async findAll(userId: number, reservationId?: number) {
-    const whereClause: any = {};
+    const whereClause: { userId: number; reservationId?: number } = { userId };
     if (reservationId) {
       whereClause.reservationId = reservationId;
-    } else {
-      whereClause.userId = userId;
     }
 
     const orders = await this.orderRepository.find({
@@ -302,14 +260,12 @@ export class OrdersService {
     });
 
     return orders.map((order) => {
-      const user = order.user as any;
-      const reservation = order.reservation as any;
+      const user = order.user;
+      const reservation = order.reservation;
 
       return {
         id: order.id,
-        fullName: user
-          ? user.name || `${user.firstName || ''} ${user.lastName || ''}`.trim()
-          : 'No disponible',
+        fullName: user?.name || 'No disponible',
         email: user?.email || 'No disponible',
         phone: user?.phone || 'No disponible',
         city: reservation?.city || order.city || 'No disponible',
@@ -326,7 +282,7 @@ export class OrdersService {
           ? order.items.map((item) => ({
               id: item.id,
               productId: item.productId,
-              name: (item.product as any)?.name || 'Producto no disponible',
+              name: item.product?.name || 'Producto no disponible',
               price: Number(item.price || 0),
               quantity: item.quantity,
               subtotal: Number(item.price || 0) * item.quantity,
@@ -351,12 +307,32 @@ export class OrdersService {
   }
 
   async updateStatus(id: number, updateOrderDto: UpdateOrderDto) {
-    const order = await this.orderRepository.preload({
-      id,
-      ...updateOrderDto,
+    return this.dataSource.transaction(async (manager) => {
+      const order = await manager.findOne(Order, {
+        where: { id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!order) throw new NotFoundException('Orden no encontrada');
+      if (order.status === updateOrderDto.status) return order;
+      const transitions: Record<OrderStatus, OrderStatus[]> = {
+        [OrderStatus.PENDING]: [OrderStatus.CANCELLED],
+        [OrderStatus.FAILED]: [OrderStatus.CANCELLED],
+        [OrderStatus.PAID]: [OrderStatus.SHIPPED],
+        [OrderStatus.SHIPPED]: [OrderStatus.DELIVERED],
+        [OrderStatus.DELIVERED]: [],
+        [OrderStatus.CANCELLED]: [],
+      };
+      if (!transitions[order.status].includes(updateOrderDto.status))
+        throw new BadRequestException(
+          'Transicion de estado no permitida. Los pagos y reembolsos usan su propio flujo.',
+        );
+      const payment = await manager.findOne(PaymentAttempt, {
+        where: { orderId: id, status: 'processing' },
+      });
+      if (payment)
+        throw new BadRequestException('Hay un pago en proceso de confirmacion');
+      order.status = updateOrderDto.status;
+      return manager.save(order);
     });
-
-    if (!order) throw new NotFoundException(`La orden #${id} no existe.`);
-    return await this.orderRepository.save(order);
   }
 }

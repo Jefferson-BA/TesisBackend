@@ -1,4 +1,10 @@
-import { IsNotEmpty, IsNumber, IsString, Min, MinLength } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsNumber,
+  IsString,
+  Min,
+  MinLength,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class AdjustOrderAmountDto {
@@ -13,7 +19,10 @@ export class AdjustOrderAmountDto {
   @MinLength(5, { message: 'El motivo debe tener al menos 5 caracteres' })
   reason!: string;
 
-  @IsNotEmpty({ message: 'Debes ingresar tu contraseña de superadmin para confirmar el reajuste' })
+  @IsNotEmpty({
+    message:
+      'Debes ingresar tu contraseña de superadmin para confirmar el reajuste',
+  })
   @IsString()
   superadminPassword!: string;
 }

@@ -1,4 +1,10 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  JoinColumn,
+} from 'typeorm';
 import { Order } from './order.entity';
 import { Product } from '../../products/entities/product.entity';
 import { ColumnNumericTransformer } from '../../common/utils/column-numeric.transformer';
@@ -28,9 +34,9 @@ export class OrderItem {
 
   @Column({
     type: 'numeric',
-    precision: 10, 
-    scale: 2,      
+    precision: 10,
+    scale: 2,
     transformer: new ColumnNumericTransformer(),
   })
-  price!: number; 
+  price!: number;
 }

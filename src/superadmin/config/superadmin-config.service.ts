@@ -1,5 +1,6 @@
 import {
   Injectable,
+  BadRequestException,
   NotFoundException,
   ForbiddenException,
   OnModuleInit,
@@ -38,67 +39,78 @@ export class SuperadminConfigService implements OnModuleInit {
     try {
       const count = await this.configRepository.count();
       if (count === 0) {
-        this.logger.log('Inicializando configuraciones globales del sistema...');
+        this.logger.log(
+          'Inicializando configuraciones globales del sistema...',
+        );
         const initialConfigs: Partial<SystemConfig>[] = [
           {
             key: 'MAINTENANCE_MODE',
             value: 'false',
             category: ConfigCategory.GENERAL,
-            description: 'Activa o desactiva el modo mantenimiento global de la plataforma',
+            description:
+              'Activa o desactiva el modo mantenimiento global de la plataforma',
             isSecret: false,
           },
           {
             key: 'MAINTENANCE_MESSAGE',
-            value: 'El sistema se encuentra en mantenimiento programado. Volveremos pronto.',
+            value:
+              'El sistema se encuentra en mantenimiento programado. Volveremos pronto.',
             category: ConfigCategory.GENERAL,
-            description: 'Mensaje visible para comensales durante el modo mantenimiento',
+            description:
+              'Mensaje visible para comensales durante el modo mantenimiento',
             isSecret: false,
           },
           {
             key: 'TAX_RATE',
             value: '0.18',
             category: ConfigCategory.FINANCIAL,
-            description: 'Tasa de impuesto IGV aplicado en facturación (ej. 0.18 = 18%)',
+            description:
+              'Tasa de impuesto IGV aplicado en facturación (ej. 0.18 = 18%)',
             isSecret: false,
           },
           {
             key: 'DELIVERY_FEE',
             value: '5.00',
             category: ConfigCategory.FINANCIAL,
-            description: 'Costo fijo base por servicio de delivery en Soles (PEN)',
+            description:
+              'Costo fijo base por servicio de delivery en Soles (PEN)',
             isSecret: false,
           },
           {
             key: 'MIN_ORDER_AMOUNT',
             value: '10.00',
             category: ConfigCategory.FINANCIAL,
-            description: 'Monto mínimo en Soles (PEN) requerido para emitir un pedido',
+            description:
+              'Monto mínimo en Soles (PEN) requerido para emitir un pedido',
             isSecret: false,
           },
           {
             key: 'SUPPORT_PHONE',
             value: '+51 987 654 321',
             category: ConfigCategory.GENERAL,
-            description: 'Teléfono o WhatsApp de atención al cliente de la sede principal',
+            description:
+              'Teléfono o WhatsApp de atención al cliente de la sede principal',
             isSecret: false,
           },
           {
             key: 'CULQI_SECRET_KEY',
-            value: process.env.CULQI_SECRET_KEY || 'sk_test_QN6iSkVTTh32WaTU',
+            value: process.env.CULQI_SECRET_KEY || '',
             category: ConfigCategory.INTEGRATIONS,
-            description: 'Llave privada / Secret Key de la pasarela de pagos Culqi',
+            description:
+              'Llave privada / Secret Key de la pasarela de pagos Culqi',
             isSecret: true,
           },
           {
             key: 'OPENROUTER_API_KEY',
-            value: process.env.OPENROUTER_API_KEY || 'sk-or-v1-placeholder',
+            value: process.env.OPENROUTER_API_KEY || '',
             category: ConfigCategory.INTEGRATIONS,
-            description: 'API Key del proveedor de modelos de Inteligencia Artificial',
+            description:
+              'API Key del proveedor de modelos de Inteligencia Artificial',
             isSecret: true,
           },
           {
             key: 'GEMINI_API_KEY',
-            value: process.env.GEMINI_API_KEY || 'AIzaSy-placeholder',
+            value: process.env.GEMINI_API_KEY || '',
             category: ConfigCategory.INTEGRATIONS,
             description: 'API Key de Google Gemini para el asistente virtual',
             isSecret: true,
@@ -111,14 +123,16 @@ export class SuperadminConfigService implements OnModuleInit {
         }
         this.logger.log('Configuraciones globales inicializadas con éxito.');
       }
-    } catch (error: any) {
-      this.logger.warn(`No se pudo inicializar las configuraciones base: ${error.message}`);
+    } catch (error: unknown) {
+      this.logger.warn(
+        `No se pudo inicializar las configuraciones base: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 
   /**
    * 🎭 ENMASCARAMIENTO DE CREDENCIALES SENSIBLES
-   * Transforma "sk_test_QN6iSkVTTh32WaTU" en "sk_t••••••••WaTU"
+   * Enmascara credenciales para respuestas administrativas.
    */
   private maskSensitiveValue(value: string): string {
     if (!value) return '';
@@ -190,13 +204,17 @@ export class SuperadminConfigService implements OnModuleInit {
     });
 
     if (!config) {
-      throw new NotFoundException(`Parámetro de configuración '${key}' no encontrado.`);
+      throw new NotFoundException(
+        `Parámetro de configuración '${key}' no encontrado.`,
+      );
     }
 
     return {
       id: config.id,
       key: config.key,
-      value: config.isSecret ? this.maskSensitiveValue(config.value) : config.value,
+      value: config.isSecret
+        ? this.maskSensitiveValue(config.value)
+        : config.value,
       category: config.category,
       description: config.description,
       isSecret: config.isSecret,
@@ -220,18 +238,42 @@ export class SuperadminConfigService implements OnModuleInit {
     });
 
     if (!config) {
-      throw new NotFoundException(`Parámetro de configuración '${key}' no encontrado.`);
+      throw new NotFoundException(
+        `Parámetro de configuración '${key}' no encontrado.`,
+      );
     }
 
     // Si es secreto, exigir contraseña de superadmin
     let superadmin: User | null = null;
     if (config.isSecret) {
-      superadmin = await this.verifySuperadminPassword(superadminId, dto.superadminPassword);
+      superadmin = await this.verifySuperadminPassword(
+        superadminId,
+        dto.superadminPassword,
+      );
     } else {
-      superadmin = await this.userRepository.findOne({ where: { id: superadminId } });
+      superadmin = await this.userRepository.findOne({
+        where: { id: superadminId },
+      });
     }
 
-    const previousValue = config.isSecret ? this.maskSensitiveValue(config.value) : config.value;
+    const previousValue = config.isSecret
+      ? this.maskSensitiveValue(config.value)
+      : config.value;
+    if (['TAX_RATE', 'DELIVERY_FEE', 'MIN_ORDER_AMOUNT'].includes(upperKey)) {
+      const number = Number(dto.value);
+      if (
+        !dto.value.trim() ||
+        !Number.isFinite(number) ||
+        number < 0 ||
+        (upperKey === 'TAX_RATE' && number > 1)
+      )
+        throw new BadRequestException('Valor financiero invalido');
+    }
+    if (
+      upperKey === 'MAINTENANCE_MODE' &&
+      !['true', 'false'].includes(dto.value)
+    )
+      throw new BadRequestException('Usa true o false');
     config.value = dto.value;
     if (dto.description) config.description = dto.description;
     config.updatedById = superadminId;
@@ -244,13 +286,15 @@ export class SuperadminConfigService implements OnModuleInit {
       action: AuditAction.SYSTEM_CONFIG_UPDATED,
       entity: 'SystemConfig',
       entityId: config.key,
-      performedBy: superadmin || ({ id: superadminId } as any),
+      performedBy: superadmin || { id: superadminId },
       ipAddress: clientInfo.ip,
       userAgent: clientInfo.userAgent,
       details: {
         key: config.key,
         previousValue: previousValue,
-        newValue: config.isSecret ? this.maskSensitiveValue(dto.value) : dto.value,
+        newValue: config.isSecret
+          ? this.maskSensitiveValue(dto.value)
+          : dto.value,
         isSecret: config.isSecret,
       },
     });
@@ -261,7 +305,9 @@ export class SuperadminConfigService implements OnModuleInit {
       config: {
         id: saved.id,
         key: saved.key,
-        value: saved.isSecret ? this.maskSensitiveValue(saved.value) : saved.value,
+        value: saved.isSecret
+          ? this.maskSensitiveValue(saved.value)
+          : saved.value,
         category: saved.category,
         description: saved.description,
         isSecret: saved.isSecret,
@@ -292,7 +338,8 @@ export class SuperadminConfigService implements OnModuleInit {
         key: 'MAINTENANCE_MODE',
         value: String(dto.enabled),
         category: ConfigCategory.GENERAL,
-        description: 'Activa o desactiva el modo mantenimiento global de la plataforma',
+        description:
+          'Activa o desactiva el modo mantenimiento global de la plataforma',
       });
     } else {
       modeConfig.value = String(dto.enabled);
@@ -312,7 +359,8 @@ export class SuperadminConfigService implements OnModuleInit {
           key: 'MAINTENANCE_MESSAGE',
           value: dto.message,
           category: ConfigCategory.GENERAL,
-          description: 'Mensaje visible para comensales durante el modo mantenimiento',
+          description:
+            'Mensaje visible para comensales durante el modo mantenimiento',
         });
       } else {
         msgConfig.value = dto.message;
@@ -355,7 +403,9 @@ export class SuperadminConfigService implements OnModuleInit {
       where: { key: 'MAINTENANCE_MESSAGE' },
     });
 
-    const inMaintenance = modeConfig ? modeConfig.value.toLowerCase() === 'true' : false;
+    const inMaintenance = modeConfig
+      ? modeConfig.value.toLowerCase() === 'true'
+      : false;
     const message = msgConfig ? msgConfig.value : 'Sistema operativo';
 
     return {

@@ -14,14 +14,18 @@ import { OrderItem } from './order-item.entity';
 
 // Transformer para evitar que el decimal llegue como string
 export class ColumnNumericTransformer {
-  to(data: number): number { return data; }
-  from(data: string): number { return parseFloat(data); }
+  to(data: number): number {
+    return data;
+  }
+  from(data: string): number {
+    return parseFloat(data);
+  }
 }
 
 export enum OrderStatus {
   PENDING = 'pending', // Creado, esperando pago
-  PAID = 'paid',       // Pago aprobado por Culqi
-  FAILED = 'failed',   // Tarjeta rechazada
+  PAID = 'paid', // Pago aprobado por Culqi
+  FAILED = 'failed', // Tarjeta rechazada
   SHIPPED = 'shipped',
   DELIVERED = 'delivered',
   CANCELLED = 'cancelled',
@@ -42,7 +46,7 @@ export class Order {
   @Index()
   @ManyToOne(() => User, (user) => user.orders, {
     nullable: false,
-    onDelete: 'RESTRICT'
+    onDelete: 'RESTRICT',
   })
   @JoinColumn({ name: 'userId' })
   user!: User;
@@ -55,7 +59,7 @@ export class Order {
     precision: 12,
     scale: 2,
     default: 0,
-    transformer: new ColumnNumericTransformer()
+    transformer: new ColumnNumericTransformer(),
   })
   totalAmount!: number;
 

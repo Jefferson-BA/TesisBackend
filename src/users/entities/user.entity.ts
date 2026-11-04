@@ -12,7 +12,7 @@ import {
   ManyToOne,
   JoinColumn,
   OneToOne,
-  Index
+  Index,
 } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
 import { Exclude } from 'class-transformer';
@@ -84,22 +84,24 @@ export class User {
   // ===============================
   // 🔐 PASSWORD LOGIC
   // ===============================
-  private tempPassword!: string;
+  #tempPassword!: string;
 
   @AfterLoad()
   loadTempPassword(): void {
-    this.tempPassword = this.password;
+    this.#tempPassword = this.password;
   }
 
   @BeforeInsert()
   async hashPassword() {
     this.password = await bcrypt.hash(this.password, 10);
+    this.#tempPassword = this.password;
   }
 
   @BeforeUpdate()
   async encryptPassword() {
-    if (this.tempPassword !== this.password) {
+    if (this.#tempPassword !== this.password) {
       this.password = await bcrypt.hash(this.password, 10);
+      this.#tempPassword = this.password;
     }
   }
 

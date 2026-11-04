@@ -69,7 +69,11 @@ export class Promotion {
   @Column({ type: 'uuid', nullable: true })
   productId?: string;
 
-  @ManyToOne(() => Product, { nullable: true, eager: true, onDelete: 'SET NULL' })
+  @ManyToOne(() => Product, {
+    nullable: true,
+    eager: true,
+    onDelete: 'SET NULL',
+  })
   @JoinColumn({ name: 'productId' })
   product?: Product;
 
@@ -77,7 +81,11 @@ export class Promotion {
   @Column({ type: 'uuid', nullable: true })
   categoryId?: string;
 
-  @ManyToOne(() => Category, { nullable: true, eager: true, onDelete: 'SET NULL' })
+  @ManyToOne(() => Category, {
+    nullable: true,
+    eager: true,
+    onDelete: 'SET NULL',
+  })
   @JoinColumn({ name: 'categoryId' })
   category?: Category;
 

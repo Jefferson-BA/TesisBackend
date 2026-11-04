@@ -15,10 +15,10 @@ describe('OrdersController', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [OrdersController],
-      providers: [
-        { provide: OrdersService, useValue: mockOrdersService },
-      ],
-    }).compile();
+      providers: [{ provide: OrdersService, useValue: mockOrdersService }],
+    })
+      .useMocker(() => ({}))
+      .compile();
 
     controller = module.get<OrdersController>(OrdersController);
   });
@@ -31,7 +31,7 @@ describe('OrdersController', () => {
     it('debería llamar a ordersService.findOne con los parámetros correctos', async () => {
       const mockReq = { user: { id: 1 } };
       const expectedResult = { id: 1, totalAmount: 150 };
-      
+
       mockOrdersService.findOne.mockResolvedValue(expectedResult);
 
       // Ejecutamos el controlador

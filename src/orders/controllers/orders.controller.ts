@@ -1,3 +1,4 @@
+import type { AuthenticatedRequest } from '../../auth/interfaces/authenticated-request.interface';
 import {
   Controller,
   Get,
@@ -9,6 +10,7 @@ import {
   Req,
   UseGuards,
   Query,
+  DefaultValuePipe,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 
@@ -25,7 +27,10 @@ export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
   @Post()
-  create(@Body() createOrderDto: CreateOrderDto, @Req() req: any) {
+  create(
+    @Body() createOrderDto: CreateOrderDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
     const userId = req.user.id;
     return this.ordersService.createOrder(userId, createOrderDto);
   }
@@ -34,25 +39,37 @@ export class OrdersController {
   payOrder(
     @Param('id', ParseIntPipe) id: number,
     @Body() payOrderDto: PayOrderDto, // 👈 Se valida automáticamente con el DTO
-    @Req() req: any,
+    @Req() req: AuthenticatedRequest,
   ) {
     const userId = req.user.id;
     return this.ordersService.payOrder(id, userId, payOrderDto);
   }
 
   @Get()
-  findAll(@Req() req: any, @Query('reservationId') reservationId?: string) {
+  findAll(
+    @Req() req: AuthenticatedRequest,
+    @Query('reservationId', new DefaultValuePipe(0), ParseIntPipe)
+    reservationId?: number,
+  ) {
     const userId = req.user.id;
-    return this.ordersService.findAll(
-      userId,
-      reservationId ? Number(reservationId) : undefined,
-    );
+    return this.ordersService.findAll(userId, reservationId || undefined);
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
+  findOne(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: AuthenticatedRequest,
+  ) {
     const userId = req.user.id;
     return this.ordersService.findOne(id, userId);
+  }
+
+  @Get(':id/payment-status')
+  paymentStatus(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.ordersService.paymentStatus(id, req.user.id);
   }
 
   @Patch(':id/status')

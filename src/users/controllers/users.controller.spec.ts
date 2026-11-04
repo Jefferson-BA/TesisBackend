@@ -1,18 +1,10 @@
-import { Controller, Post, Body, Get, Param } from '@nestjs/common';
+import { UsersController } from './users.controller';
 import { UsersService } from '../services/users.service';
-import { CreateUserDto } from '../dto/create-user.dto';
-
-@Controller('users')
-export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
-
-  @Post()
-  create(@Body() createUserDto: CreateUserDto) {
-    return this.usersService.create(createUserDto);
-  }
-
-  @Get(':email')
-  findByEmail(@Param('email') email: string) {
-    return this.usersService.findOneByEmail(email);
-  }
-}
+describe('UsersController', () => {
+  it('updates only the profile of the authenticated user', async () => {
+    const service = { update: jest.fn().mockResolvedValue({ id: 7 }) };
+    const controller = new UsersController(service as unknown as UsersService);
+    await controller.updateProfile({ user: { id: 7 } }, { name: 'Updated' });
+    expect(service.update).toHaveBeenCalledWith(7, { name: 'Updated' });
+  });
+});

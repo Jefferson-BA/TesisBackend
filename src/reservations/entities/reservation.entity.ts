@@ -1,12 +1,12 @@
-import { 
-  Entity, 
-  PrimaryGeneratedColumn, 
-  Column, 
-  CreateDateColumn, 
-  UpdateDateColumn, 
-  ManyToOne, 
-  OneToMany, 
-  JoinColumn 
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  ManyToOne,
+  OneToMany,
+  JoinColumn,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
 import { ReservationItem } from '../entities/reservation-item.entity';
@@ -28,22 +28,22 @@ export class Reservation {
   user!: User;
 
   @Column({ type: 'date' })
-  eventDate!: Date; 
+  eventDate!: Date;
 
   @Column({ type: 'varchar', length: 50 })
-  serviceStartTime!: string; 
+  serviceStartTime!: string;
 
   @Column({ type: 'int' })
-  guestsCount!: number; 
+  guestsCount!: number;
 
   @Column({ length: 255 })
-  venueAddress!: string; 
+  venueAddress!: string;
 
   @Column({ length: 100 })
   city!: string;
 
   @Column({ type: 'text', nullable: true })
-  additionalNotes?: string; 
+  additionalNotes?: string;
 
   // ==========================================
   // ✨ TÉRMINOS Y CONDICIONES (Auditoría)
@@ -55,11 +55,11 @@ export class Reservation {
   privacyAcceptedAt?: Date;
   // ==========================================
 
-  // 🚨 CORRECCIÓN ARQUITECTÓNICA: 
+  // 🚨 CORRECCIÓN ARQUITECTÓNICA:
   // Eliminamos el `orderId` físico de aquí. La Reserva no guarda el ID de la orden.
   // La Orden guarda el ID de la Reserva. Por lo tanto, aquí es un OneToMany.
   @OneToMany(() => Order, (order) => order.reservation)
-  orders!: Order[]; 
+  orders!: Order[];
 
   @Column({
     type: 'numeric',
@@ -72,11 +72,13 @@ export class Reservation {
   @Column({
     type: 'enum',
     enum: ReservationStatus,
-    default: ReservationStatus.PENDING_REVIEW, 
+    default: ReservationStatus.PENDING_REVIEW,
   })
   status!: ReservationStatus;
 
-  @OneToMany(() => ReservationItem, (item) => item.reservation, { cascade: true })
+  @OneToMany(() => ReservationItem, (item) => item.reservation, {
+    cascade: true,
+  })
   items!: ReservationItem[];
 
   @CreateDateColumn({ type: 'timestamptz' })

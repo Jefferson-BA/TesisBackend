@@ -17,11 +17,27 @@ import { ReservationsModule } from './reservations/reservations.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { ChatbotModule } from './chatbot/chatbot.module';
 import { SuperadminModule } from './superadmin/superadmin.module';
+import { APP_GUARD } from '@nestjs/core';
+import { SettingsModule } from './settings/settings.module';
+import { MaintenanceGuard } from './settings/maintenance.guard';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      validate: (env: Record<string, unknown>) => {
+        if (
+          typeof env.JWT_SECRET !== 'string' ||
+          env.JWT_SECRET.trim().length < 32
+        )
+          throw new Error('JWT_SECRET debe contener al menos 32 caracteres');
+        if (
+          env.NODE_ENV === 'production' &&
+          String(env.TYPEORM_SYNC).toLowerCase() === 'true'
+        )
+          throw new Error('TYPEORM_SYNC debe estar desactivado en producción');
+        return env;
+      },
     }),
 
     TypeOrmModule.forRootAsync({
@@ -29,7 +45,9 @@ import { SuperadminModule } from './superadmin/superadmin.module';
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => {
         const dbUrl = configService.get<string>('DATABASE_URL');
-        const isSync = (configService.get<string>('TYPEORM_SYNC') || '').toLowerCase() === 'true';
+        const isSync =
+          (configService.get<string>('TYPEORM_SYNC') || '').toLowerCase() ===
+          'true';
 
         // Conexión para Producción / Staging (Usa DATABASE_URL de Neon con SSL)
         if (dbUrl) {
@@ -49,7 +67,7 @@ import { SuperadminModule } from './superadmin/superadmin.module';
         const isNeonHost = host.includes('neon.tech');
 
         return {
-          type: (configService.get<string>('DB_TYPE') || 'postgres') as any,
+          type: 'postgres',
           host: host,
           port: configService.get<number>('DB_PORT', 5432),
           username: configService.get<string>('DB_USERNAME', 'postgres'),
@@ -62,6 +80,7 @@ import { SuperadminModule } from './superadmin/superadmin.module';
       },
     }),
 
+    SettingsModule,
     AuthModule,
     UsersModule,
     ProductsModule,
@@ -76,6 +95,6 @@ import { SuperadminModule } from './superadmin/superadmin.module';
     SuperadminModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, { provide: APP_GUARD, useClass: MaintenanceGuard }],
 })
 export class AppModule {}

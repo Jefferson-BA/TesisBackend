@@ -1,4 +1,10 @@
-import { IsNotEmpty, IsString, MinLength, IsOptional, IsBoolean } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsString,
+  MinLength,
+  IsOptional,
+  IsBoolean,
+} from 'class-validator';
 
 export class ForceCancelOrderDto {
   @IsNotEmpty({ message: 'El motivo de la anulación forzada es obligatorio' })
@@ -6,7 +12,10 @@ export class ForceCancelOrderDto {
   @MinLength(5, { message: 'El motivo debe tener al menos 5 caracteres' })
   reason!: string;
 
-  @IsNotEmpty({ message: 'Debes ingresar tu contraseña de superadmin para confirmar la anulación forzada' })
+  @IsNotEmpty({
+    message:
+      'Debes ingresar tu contraseña de superadmin para confirmar la anulación forzada',
+  })
   @IsString()
   superadminPassword!: string;
 

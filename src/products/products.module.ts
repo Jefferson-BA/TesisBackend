@@ -8,6 +8,6 @@ import { Product } from './entities/product.entity';
   imports: [TypeOrmModule.forFeature([Product])],
   controllers: [ProductsController],
   providers: [ProductsService],
-  exports: [ProductsService] // 👈 AÑADE ESTA LÍNEA (Vital para compartirlo)
+  exports: [ProductsService], // 👈 AÑADE ESTA LÍNEA (Vital para compartirlo)
 })
 export class ProductsModule {}

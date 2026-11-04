@@ -1,3 +1,4 @@
+import { ChatbotRateLimitGuard } from './guards/chatbot-rate-limit.guard';
 import { Module } from '@nestjs/common';
 import { ChatbotController } from './controllers/chatbot.controller';
 import { ChatbotService } from './services/chatbot.service';
@@ -6,6 +7,6 @@ import { ProductsModule } from '../products/products.module'; // 👈 Importa es
 @Module({
   imports: [ProductsModule], // 👈 AÑADE ESTA LÍNEA
   controllers: [ChatbotController],
-  providers: [ChatbotService],
+  providers: [ChatbotService, ChatbotRateLimitGuard],
 })
 export class ChatbotModule {}

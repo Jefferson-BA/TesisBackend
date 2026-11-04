@@ -12,11 +12,11 @@ export interface CreateAuditLogParams {
     id: number;
     name?: string;
     email?: string;
-    role?: any;
+    role?: string | { name?: string };
   };
   ipAddress: string;
   userAgent?: string;
-  details?: Record<string, any>;
+  details?: Record<string, unknown>;
 }
 
 @Injectable()
@@ -32,7 +32,7 @@ export class SuperadminAuditService {
    * 📝 REGISTRAR ACCIÓN CRÍTICA
    * Registra automáticamente la acción en la base de datos de auditoría
    */
-  async logAction(params: CreateAuditLogParams): Promise<AuditLog> {
+  async logAction(params: CreateAuditLogParams): Promise<AuditLog | null> {
     try {
       const performedByRole =
         typeof params.performedBy.role === 'string'
@@ -57,10 +57,13 @@ export class SuperadminAuditService {
         `[AUDIT] Action: ${params.action} | Entity: ${params.entity} #${params.entityId || 'N/A'} by User #${params.performedBy.id} (${params.ipAddress})`,
       );
       return saved;
-    } catch (error: any) {
-      this.logger.error(`Error guardando log de auditoría: ${error.message}`, error.stack);
+    } catch (error: unknown) {
+      this.logger.error(
+        error instanceof Error ? error.message : String(error),
+        error instanceof Error ? error.stack : undefined,
+      );
       // No dejamos que falle la operación principal si la auditoría falla
-      return null as any;
+      return null;
     }
   }
 
@@ -90,11 +93,15 @@ export class SuperadminAuditService {
     }
 
     if (performedById) {
-      queryBuilder.andWhere('log.performedById = :performedById', { performedById });
+      queryBuilder.andWhere('log.performedById = :performedById', {
+        performedById,
+      });
     }
 
     if (startDate) {
-      queryBuilder.andWhere('log.createdAt >= :startDate', { startDate: new Date(startDate) });
+      queryBuilder.andWhere('log.createdAt >= :startDate', {
+        startDate: new Date(startDate),
+      });
     }
 
     if (endDate) {
@@ -131,10 +138,12 @@ export class SuperadminAuditService {
   /**
    * 🔎 CONSULTAR LOG INDIVIDUAL
    */
-  async findOne(id: number): Promise<AuditLog> {
+  async findOne(id: number): Promise<AuditLog | null> {
     const log = await this.auditRepository.findOne({ where: { id } });
     if (!log) {
-      throw new NotFoundException(`Registro de auditoría #${id} no encontrado.`);
+      throw new NotFoundException(
+        `Registro de auditoría #${id} no encontrado.`,
+      );
     }
     return log;
   }

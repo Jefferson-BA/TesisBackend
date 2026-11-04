@@ -1,10 +1,11 @@
-import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { LessThanOrEqual, MoreThanOrEqual, Repository } from 'typeorm';
+import {
+  LessThanOrEqual,
+  MoreThanOrEqual,
+  Repository,
+  EntityManager,
+} from 'typeorm';
 import { Promotion } from '../entities/promotion.entity';
 import { CreatePromotionDto } from '../dto/create-promotion.dto';
 import { UpdatePromotionDto } from '../dto/update-promotion.dto';
@@ -54,7 +55,8 @@ export class PromotionsService {
     const today = new Date();
     const todayStr = today.toISOString().split('T')[0];
 
-    return await this.promotionRepository.createQueryBuilder('promotion')
+    return await this.promotionRepository
+      .createQueryBuilder('promotion')
       .leftJoinAndSelect('promotion.product', 'product')
       .leftJoinAndSelect('promotion.category', 'category')
       .where('promotion.isActive = :isActive', { isActive: true })
@@ -108,7 +110,7 @@ export class PromotionsService {
 
       case DiscountType.FIXED_AMOUNT: {
         const discounted = originalPrice - discountValue;
-        return +(Math.max(discounted, 0)).toFixed(2); // nunca negativo
+        return +Math.max(discounted, 0).toFixed(2); // nunca negativo
       }
 
       case DiscountType.BUY_X_GET_DISCOUNT: {
@@ -134,9 +136,19 @@ export class PromotionsService {
   async findActivePromotionForProduct(
     productId: string,
     categoryId: string,
+    manager?: EntityManager,
   ): Promise<Promotion | null> {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const repository = manager
+      ? manager.getRepository(Promotion)
+      : this.promotionRepository;
+    const today = new Date(
+      new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Lima',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(new Date()) + 'T00:00:00Z',
+    );
 
     const baseWhere = {
       isActive: true,
@@ -145,20 +157,23 @@ export class PromotionsService {
     };
 
     // 1. Busca promo por producto específico
-    const byProduct = await this.promotionRepository.findOne({
+    const byProduct = await repository.findOne({
       where: { ...baseWhere, applyTo: ApplyTo.PRODUCT, productId },
+      order: { id: 'ASC' },
     });
     if (byProduct) return byProduct;
 
     // 2. Busca promo por categoría
-    const byCategory = await this.promotionRepository.findOne({
+    const byCategory = await repository.findOne({
       where: { ...baseWhere, applyTo: ApplyTo.CATEGORY, categoryId },
+      order: { id: 'ASC' },
     });
     if (byCategory) return byCategory;
 
     // 3. Busca promo general
-    return await this.promotionRepository.findOne({
+    return await repository.findOne({
       where: { ...baseWhere, applyTo: ApplyTo.ALL },
+      order: { id: 'ASC' },
     });
   }
 }

@@ -1,13 +1,13 @@
-import { 
-  Entity, 
-  PrimaryGeneratedColumn, 
-  Column, 
-  CreateDateColumn, 
-  UpdateDateColumn, 
-  DeleteDateColumn, 
-  ManyToOne, 
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  DeleteDateColumn,
+  ManyToOne,
   JoinColumn,
-  Index 
+  Index,
 } from 'typeorm';
 import { Category } from '../../categories/entities/category.entity';
 
@@ -16,7 +16,7 @@ export class Product {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Index() 
+  @Index()
   @Column({ type: 'varchar', length: 150, unique: true })
   name!: string;
 
@@ -36,7 +36,7 @@ export class Product {
   @Column({ type: 'boolean', default: true })
   isActive!: boolean;
 
-  @Index() 
+  @Index()
   @ManyToOne(() => Category, (category) => category.products, { eager: true })
   @JoinColumn({ name: 'category_id' })
   category!: Category;

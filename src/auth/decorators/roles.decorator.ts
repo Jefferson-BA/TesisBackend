@@ -1,6 +1,5 @@
 import { SetMetadata } from '@nestjs/common';
 // Si tienes tu enum en otra ruta, asegúrate de importarlo correctamente
-import { RoleType } from '../../roles/enums/role-type.enum'; 
 
 export const ROLES_KEY = 'roles';
 

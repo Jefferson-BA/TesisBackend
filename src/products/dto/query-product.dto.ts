@@ -2,6 +2,7 @@ import {
   IsOptional,
   IsPositive,
   Min,
+  Max,
   IsInt,
   IsString,
   IsNumber,
@@ -13,6 +14,7 @@ export class QueryProductDto {
   @IsInt()
   @Min(1)
   @Type(() => Number)
+  @Max(100)
   limit?: number = 10; // Por defecto traerá 10 productos
 
   @IsOptional()

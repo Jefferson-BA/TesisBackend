@@ -1,15 +1,10 @@
 import { NestFactory, Reflector } from '@nestjs/core';
-import {
-  ValidationPipe,
-  ClassSerializerInterceptor,
-} from '@nestjs/common';
+import { ValidationPipe, ClassSerializerInterceptor } from '@nestjs/common';
 
 import { AppModule } from './app.module';
+import { SensitiveDataInterceptor } from './common/interceptors/sensitive-data.interceptor';
 
-import {
-  SwaggerModule,
-  DocumentBuilder,
-} from '@nestjs/swagger';
+import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -18,7 +13,7 @@ async function bootstrap() {
   app.enableCors({
     origin: [
       'https://tesis-frontend-gilt.vercel.app', // Dominio de tu frontend en Vercel
-      'http://localhost:4321',                 // Astro en local
+      'http://localhost:4321', // Astro en local
       'http://localhost:3000',
     ],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
@@ -39,6 +34,7 @@ async function bootstrap() {
 
   // ✅ Interceptor global
   app.useGlobalInterceptors(
+    new SensitiveDataInterceptor(),
     new ClassSerializerInterceptor(app.get(Reflector)),
   );
 
@@ -62,4 +58,7 @@ async function bootstrap() {
   console.log(`📚 Swagger disponible en: /api`);
 }
 
-bootstrap();
+bootstrap().catch((error: unknown) => {
+  console.error(error instanceof Error ? error.message : 'Error de inicio');
+  process.exitCode = 1;
+});

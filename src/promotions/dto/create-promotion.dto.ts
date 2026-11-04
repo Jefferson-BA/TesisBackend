@@ -9,7 +9,6 @@ import {
   IsPositive,
   IsUUID,
   Min,
-  Max,
   ValidateIf,
   IsInt,
 } from 'class-validator';
@@ -47,7 +46,10 @@ export class CreatePromotionDto {
    * Solo obligatorio si discountType = 'buy_x_get_discount'.
    * Mínimo 2 (no tiene sentido comprar 1 y obtener descuento en qty).
    */
-  @ValidateIf((o) => o.discountType === DiscountType.BUY_X_GET_DISCOUNT)
+  @ValidateIf(
+    (o: CreatePromotionDto) =>
+      o.discountType === DiscountType.BUY_X_GET_DISCOUNT,
+  )
   @IsInt()
   @Min(2)
   @IsNotEmpty()
@@ -62,7 +64,7 @@ export class CreatePromotionDto {
    * Requerido cuando applyTo = 'product'.
    * UUID del producto al que aplica la promo.
    */
-  @ValidateIf((o) => o.applyTo === ApplyTo.PRODUCT)
+  @ValidateIf((o: CreatePromotionDto) => o.applyTo === ApplyTo.PRODUCT)
   @IsUUID()
   @IsNotEmpty()
   productId?: string;
@@ -71,7 +73,7 @@ export class CreatePromotionDto {
    * Requerido cuando applyTo = 'category'.
    * UUID de la categoría a la que aplica la promo.
    */
-  @ValidateIf((o) => o.applyTo === ApplyTo.CATEGORY)
+  @ValidateIf((o: CreatePromotionDto) => o.applyTo === ApplyTo.CATEGORY)
   @IsUUID()
   @IsNotEmpty()
   categoryId?: string;

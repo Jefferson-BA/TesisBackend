@@ -1,3 +1,4 @@
+import type { AuthenticatedRequest } from '../../auth/interfaces/authenticated-request.interface';
 import {
   Controller,
   Post,
@@ -31,30 +32,45 @@ export class SuperadminFinanceController {
   forceCancelOrder(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: ForceCancelOrderDto,
-    @Req() req: any,
+    @Req() req: AuthenticatedRequest,
   ) {
     const clientInfo = getClientInfo(req);
-    return this.financeService.forceCancelOrder(id, req.user.id, dto, clientInfo);
+    return this.financeService.forceCancelOrder(
+      id,
+      req.user.id,
+      dto,
+      clientInfo,
+    );
   }
 
   @Post('orders/:id/refund')
   processCulqiRefund(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CulqiRefundDto,
-    @Req() req: any,
+    @Req() req: AuthenticatedRequest,
   ) {
     const clientInfo = getClientInfo(req);
-    return this.financeService.processCulqiRefund(id, req.user.id, dto, clientInfo);
+    return this.financeService.processCulqiRefund(
+      id,
+      req.user.id,
+      dto,
+      clientInfo,
+    );
   }
 
   @Patch('orders/:id/adjust-amount')
   adjustOrderAmount(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: AdjustOrderAmountDto,
-    @Req() req: any,
+    @Req() req: AuthenticatedRequest,
   ) {
     const clientInfo = getClientInfo(req);
-    return this.financeService.adjustOrderAmount(id, req.user.id, dto, clientInfo);
+    return this.financeService.adjustOrderAmount(
+      id,
+      req.user.id,
+      dto,
+      clientInfo,
+    );
   }
 
   @Get('reports')

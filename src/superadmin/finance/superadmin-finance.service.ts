@@ -1,3 +1,4 @@
+import { PaymentAttempt } from '../../payments/entities/payment-attempt.entity';
 import {
   Injectable,
   NotFoundException,
@@ -10,7 +11,7 @@ import { Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
 
 import { Order } from '../../orders/entities/order.entity';
-import { OrderStatus, PaymentMethod } from '../../orders/enums/order.enums';
+import { OrderStatus } from '../../orders/enums/order.enums';
 import { Reservation } from '../../reservations/entities/reservation.entity';
 import { ReservationStatus } from '../../reservations/enums/reservations.enums';
 import { User } from '../../users/entities/user.entity';
@@ -79,78 +80,98 @@ export class SuperadminFinanceService {
       dto.superadminPassword,
     );
 
-    const order = await this.orderRepository.findOne({
-      where: { id: orderId },
-      relations: ['user', 'reservation'],
-    });
-
-    if (!order) {
-      throw new NotFoundException(`La orden #${orderId} no existe.`);
-    }
-
-    if (order.status === OrderStatus.CANCELLED) {
-      throw new BadRequestException(`La orden #${orderId} ya se encuentra anulada.`);
-    }
-
-    const previousStatus = order.status;
-    let culqiRefundData: any = null;
-
-    // Si se solicitó devolución automática con Culqi y existe chargeId
-    if (dto.refundWithCulqi) {
-      if (!order.chargeId) {
+    return this.orderRepository.manager.transaction(async (manager) => {
+      const locked = await manager.findOne(Order, {
+        where: { id: orderId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!locked) throw new NotFoundException('Orden no encontrada');
+      const processing = await manager.findOne(PaymentAttempt, {
+        where: { orderId, status: 'processing' },
+      });
+      if (processing)
         throw new BadRequestException(
-          `La orden #${orderId} no registra un ID de cobro de Culqi (chargeId). Por favor use la opción de reembolso manual indicando el chargeId.`,
+          'La orden tiene un pago pendiente de conciliacion',
+        );
+      const orderRepository = manager.getRepository(Order);
+      const reservationRepository = manager.getRepository(Reservation);
+      const order = await orderRepository.findOne({
+        where: { id: orderId },
+        relations: ['user', 'reservation'],
+      });
+
+      if (!order) {
+        throw new NotFoundException(`La orden #${orderId} no existe.`);
+      }
+
+      if (order.status === OrderStatus.CANCELLED) {
+        throw new BadRequestException(
+          `La orden #${orderId} ya se encuentra anulada.`,
         );
       }
 
-      culqiRefundData = await this.culqiService.createRefund(
-        order.chargeId,
-        Number(order.totalAmount),
-        dto.reason,
-      );
-    }
+      const previousStatus = order.status;
+      let culqiRefundData: Awaited<
+        ReturnType<CulqiService['createRefund']>
+      > | null = null;
 
-    // Actualizar estado de la orden
-    order.status = OrderStatus.CANCELLED;
-    const updatedOrder = await this.orderRepository.save(order);
+      // Si se solicitó devolución automática con Culqi y existe chargeId
+      if (dto.refundWithCulqi) {
+        if (!order.chargeId) {
+          throw new BadRequestException(
+            `La orden #${orderId} no registra un ID de cobro de Culqi (chargeId). Por favor use la opción de reembolso manual indicando el chargeId.`,
+          );
+        }
 
-    // Si la orden estaba vinculada a una reserva, anular también la reserva para liberar disponibilidad
-    if (order.reservationId) {
-      await this.reservationRepository.update(order.reservationId, {
-        status: ReservationStatus.CANCELLED,
+        culqiRefundData = await this.culqiService.createRefund(
+          order.chargeId,
+          Number(order.totalAmount),
+          dto.reason,
+        );
+      }
+
+      // Actualizar estado de la orden
+      order.status = OrderStatus.CANCELLED;
+      const updatedOrder = await orderRepository.save(order);
+
+      // Si la orden estaba vinculada a una reserva, anular también la reserva para liberar disponibilidad
+      if (order.reservationId) {
+        await reservationRepository.update(order.reservationId, {
+          status: ReservationStatus.CANCELLED,
+        });
+      }
+
+      // Registrar en auditoría
+      await this.auditService.logAction({
+        action: AuditAction.ORDER_FORCE_CANCELLED,
+        entity: 'Order',
+        entityId: order.id,
+        performedBy: superadmin,
+        ipAddress: clientInfo.ip,
+        userAgent: clientInfo.userAgent,
+        details: {
+          orderId: order.id,
+          orderTotal: order.totalAmount,
+          customerEmail: order.user?.email,
+          previousStatus,
+          newStatus: OrderStatus.CANCELLED,
+          reason: dto.reason,
+          refundWithCulqi: !!dto.refundWithCulqi,
+          culqiRefundData,
+        },
       });
-    }
 
-    // Registrar en auditoría
-    await this.auditService.logAction({
-      action: AuditAction.ORDER_FORCE_CANCELLED,
-      entity: 'Order',
-      entityId: order.id,
-      performedBy: superadmin,
-      ipAddress: clientInfo.ip,
-      userAgent: clientInfo.userAgent,
-      details: {
-        orderId: order.id,
-        orderTotal: order.totalAmount,
-        customerEmail: order.user?.email,
-        previousStatus,
-        newStatus: OrderStatus.CANCELLED,
-        reason: dto.reason,
-        refundWithCulqi: !!dto.refundWithCulqi,
-        culqiRefundData,
-      },
+      return {
+        success: true,
+        message: `La orden #${orderId} ha sido anulada forzosamente por el superadmin.`,
+        order: {
+          id: updatedOrder.id,
+          status: updatedOrder.status,
+          totalAmount: updatedOrder.totalAmount,
+        },
+        refund: culqiRefundData,
+      };
     });
-
-    return {
-      success: true,
-      message: `La orden #${orderId} ha sido anulada forzosamente por el superadmin.`,
-      order: {
-        id: updatedOrder.id,
-        status: updatedOrder.status,
-        totalAmount: updatedOrder.totalAmount,
-      },
-      refund: culqiRefundData,
-    };
   }
 
   /**
@@ -167,72 +188,105 @@ export class SuperadminFinanceService {
       dto.superadminPassword,
     );
 
-    const order = await this.orderRepository.findOne({
-      where: { id: orderId },
-      relations: ['user'],
-    });
+    return this.orderRepository.manager.transaction(async (manager) => {
+      const locked = await manager.findOne(Order, {
+        where: { id: orderId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!locked) throw new NotFoundException('Orden no encontrada');
+      const processing = await manager.findOne(PaymentAttempt, {
+        where: { orderId, status: 'processing' },
+      });
+      if (processing)
+        throw new BadRequestException(
+          'La orden tiene un pago pendiente de conciliacion',
+        );
+      const orderRepository = manager.getRepository(Order);
+      const reservationRepository = manager.getRepository(Reservation);
+      const order = await orderRepository.findOne({
+        where: { id: orderId },
+        relations: ['user'],
+      });
 
-    if (!order) {
-      throw new NotFoundException(`La orden #${orderId} no existe.`);
-    }
+      if (!order) {
+        throw new NotFoundException(`La orden #${orderId} no existe.`);
+      }
 
-    const chargeId = dto.chargeId || order.chargeId;
-    if (!chargeId) {
-      throw new BadRequestException(
-        `No se encontró identificador de cargo Culqi (chargeId) en la orden #${orderId}. Debes especificar el 'chargeId' en la petición.`,
+      if (dto.chargeId && dto.chargeId !== order.chargeId)
+        throw new BadRequestException('El cargo no corresponde a la orden');
+      if (
+        ![
+          OrderStatus.PAID,
+          OrderStatus.SHIPPED,
+          OrderStatus.DELIVERED,
+        ].includes(order.status)
+      )
+        throw new BadRequestException('La orden no admite reembolsos');
+      const chargeId = order.chargeId;
+      if (!chargeId) {
+        throw new BadRequestException(
+          `No se encontró identificador de cargo Culqi (chargeId) en la orden #${orderId}. Debes especificar el 'chargeId' en la petición.`,
+        );
+      }
+
+      const refundAmount =
+        dto.amount !== undefined
+          ? Number(dto.amount)
+          : Number(order.totalAmount);
+
+      if (refundAmount > Number(order.totalAmount)) {
+        throw new BadRequestException(
+          `El monto a reembolsar (S/ ${refundAmount}) no puede ser mayor al total de la orden (S/ ${order.totalAmount}).`,
+        );
+      }
+
+      // Ejecutar llamada a API de Culqi v2
+      const culqiResponse = await this.culqiService.createRefund(
+        chargeId,
+        refundAmount,
+        dto.reason || 'solicitud_comprador',
       );
-    }
 
-    const refundAmount = dto.amount !== undefined ? Number(dto.amount) : Number(order.totalAmount);
+      // Si el reembolso es por el monto total, actualizar orden a CANCELLED
+      const isFullRefund = refundAmount >= Number(order.totalAmount);
+      if (isFullRefund) {
+        if (order.reservationId)
+          await reservationRepository.update(order.reservationId, {
+            status: ReservationStatus.CANCELLED,
+          });
+        order.status = OrderStatus.CANCELLED;
+        await orderRepository.save(order);
+      }
 
-    if (refundAmount > Number(order.totalAmount)) {
-      throw new BadRequestException(
-        `El monto a reembolsar (S/ ${refundAmount}) no puede ser mayor al total de la orden (S/ ${order.totalAmount}).`,
-      );
-    }
+      // Auditoría
+      await this.auditService.logAction({
+        action: AuditAction.CULQI_REFUND_PROCESSED,
+        entity: 'Order',
+        entityId: order.id,
+        performedBy: superadmin,
+        ipAddress: clientInfo.ip,
+        userAgent: clientInfo.userAgent,
+        details: {
+          orderId: order.id,
+          chargeId: chargeId,
+          refundId: culqiResponse?.id,
+          refundAmount: refundAmount,
+          orderTotal: order.totalAmount,
+          isFullRefund,
+          reason: dto.reason,
+          culqiResponse,
+        },
+      });
 
-    // Ejecutar llamada a API de Culqi v2
-    const culqiResponse = await this.culqiService.createRefund(
-      chargeId,
-      refundAmount,
-      dto.reason || 'solicitud_comprador',
-    );
-
-    // Si el reembolso es por el monto total, actualizar orden a CANCELLED
-    const isFullRefund = refundAmount >= Number(order.totalAmount);
-    if (isFullRefund) {
-      order.status = OrderStatus.CANCELLED;
-      await this.orderRepository.save(order);
-    }
-
-    // Auditoría
-    await this.auditService.logAction({
-      action: AuditAction.CULQI_REFUND_PROCESSED,
-      entity: 'Order',
-      entityId: order.id,
-      performedBy: superadmin,
-      ipAddress: clientInfo.ip,
-      userAgent: clientInfo.userAgent,
-      details: {
-        orderId: order.id,
-        chargeId: chargeId,
+      return {
+        success: true,
+        message: `Reembolso por S/ ${refundAmount.toFixed(2)} procesado exitosamente en Culqi.`,
         refundId: culqiResponse?.id,
-        refundAmount: refundAmount,
-        orderTotal: order.totalAmount,
         isFullRefund,
-        reason: dto.reason,
-        culqiResponse,
-      },
+        orderStatus: order.status,
+        culqiData: culqiResponse,
+      };
     });
-
-    return {
-      success: true,
-      message: `Reembolso por S/ ${refundAmount.toFixed(2)} procesado exitosamente en Culqi.`,
-      refundId: culqiResponse?.id,
-      isFullRefund,
-      orderStatus: order.status,
-      culqiData: culqiResponse,
-    };
   }
 
   /**
@@ -249,50 +303,69 @@ export class SuperadminFinanceService {
       dto.superadminPassword,
     );
 
-    const order = await this.orderRepository.findOne({
-      where: { id: orderId },
-      relations: ['user'],
+    return this.orderRepository.manager.transaction(async (manager) => {
+      const locked = await manager.findOne(Order, {
+        where: { id: orderId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!locked) throw new NotFoundException('Orden no encontrada');
+      const processing = await manager.findOne(PaymentAttempt, {
+        where: { orderId, status: 'processing' },
+      });
+      if (processing)
+        throw new BadRequestException(
+          'La orden tiene un pago pendiente de conciliacion',
+        );
+      const orderRepository = manager.getRepository(Order);
+      if (![OrderStatus.PENDING, OrderStatus.FAILED].includes(locked.status))
+        throw new BadRequestException(
+          'Solo se puede ajustar una orden no pagada',
+        );
+      const order = await orderRepository.findOne({
+        where: { id: orderId },
+        relations: ['user'],
+      });
+
+      if (!order) {
+        throw new NotFoundException(`La orden #${orderId} no existe.`);
+      }
+
+      const previousAmount = Number(order.totalAmount);
+      const newAmount = Number(dto.newTotalAmount);
+      const difference = newAmount - previousAmount;
+
+      order.totalAmount = newAmount;
+      const updatedOrder = await orderRepository.save(order);
+
+      // Auditoría
+      await this.auditService.logAction({
+        action: AuditAction.ORDER_AMOUNT_ADJUSTED,
+        entity: 'Order',
+        entityId: order.id,
+        performedBy: superadmin,
+        ipAddress: clientInfo.ip,
+        userAgent: clientInfo.userAgent,
+        details: {
+          orderId: order.id,
+          previousAmount,
+          newAmount,
+          difference,
+          reason: dto.reason,
+        },
+      });
+
+      return {
+        success: true,
+        message: `Monto de la orden #${orderId} reajustado de S/ ${previousAmount.toFixed(2)} a S/ ${newAmount.toFixed(2)}.`,
+        order: {
+          id: updatedOrder.id,
+          previousAmount,
+          newAmount,
+          difference,
+          reason: dto.reason,
+        },
+      };
     });
-
-    if (!order) {
-      throw new NotFoundException(`La orden #${orderId} no existe.`);
-    }
-
-    const previousAmount = Number(order.totalAmount);
-    const newAmount = Number(dto.newTotalAmount);
-    const difference = newAmount - previousAmount;
-
-    order.totalAmount = newAmount;
-    const updatedOrder = await this.orderRepository.save(order);
-
-    // Auditoría
-    await this.auditService.logAction({
-      action: AuditAction.ORDER_AMOUNT_ADJUSTED,
-      entity: 'Order',
-      entityId: order.id,
-      performedBy: superadmin,
-      ipAddress: clientInfo.ip,
-      userAgent: clientInfo.userAgent,
-      details: {
-        orderId: order.id,
-        previousAmount,
-        newAmount,
-        difference,
-        reason: dto.reason,
-      },
-    });
-
-    return {
-      success: true,
-      message: `Monto de la orden #${orderId} reajustado de S/ ${previousAmount.toFixed(2)} a S/ ${newAmount.toFixed(2)}.`,
-      order: {
-        id: updatedOrder.id,
-        previousAmount,
-        newAmount,
-        difference,
-        reason: dto.reason,
-      },
-    };
   }
 
   /**
@@ -304,7 +377,9 @@ export class SuperadminFinanceService {
     const qb = this.orderRepository.createQueryBuilder('order');
 
     if (startDate) {
-      qb.andWhere('order.createdAt >= :startDate', { startDate: new Date(startDate) });
+      qb.andWhere('order.createdAt >= :startDate', {
+        startDate: new Date(startDate),
+      });
     }
 
     if (endDate) {
@@ -323,7 +398,7 @@ export class SuperadminFinanceService {
 
     const orders = await qb.getMany();
 
-    let totalOrders = orders.length;
+    const totalOrders = orders.length;
     let paidOrdersCount = 0;
     let cancelledOrdersCount = 0;
     let totalRevenue = 0;
@@ -345,7 +420,10 @@ export class SuperadminFinanceService {
     };
 
     // Agrupación para línea de tiempo (por día YYYY-MM-DD)
-    const timelineMap: Record<string, { date: string; revenue: number; ordersCount: number }> = {};
+    const timelineMap: Record<
+      string,
+      { date: string; revenue: number; ordersCount: number }
+    > = {};
 
     orders.forEach((ord) => {
       const amount = Number(ord.totalAmount) || 0;
@@ -354,11 +432,12 @@ export class SuperadminFinanceService {
 
       countByStatus[orderStatus] = (countByStatus[orderStatus] || 0) + 1;
 
-      if (orderStatus === 'paid') {
+      if (['paid', 'shipped', 'delivered'].includes(orderStatus)) {
         paidOrdersCount++;
         totalRevenue += amount;
 
-        revenueByPaymentMethod[pMethod] = (revenueByPaymentMethod[pMethod] || 0) + amount;
+        revenueByPaymentMethod[pMethod] =
+          (revenueByPaymentMethod[pMethod] || 0) + amount;
 
         const dateKey = new Date(ord.createdAt).toISOString().split('T')[0];
         if (!timelineMap[dateKey]) {
@@ -371,7 +450,8 @@ export class SuperadminFinanceService {
       }
     });
 
-    const averageTicket = paidOrdersCount > 0 ? totalRevenue / paidOrdersCount : 0;
+    const averageTicket =
+      paidOrdersCount > 0 ? totalRevenue / paidOrdersCount : 0;
     const timeline = Object.values(timelineMap).sort(
       (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
     );

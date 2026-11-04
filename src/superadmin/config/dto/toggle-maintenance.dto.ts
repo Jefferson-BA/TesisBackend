@@ -9,7 +9,10 @@ export class ToggleMaintenanceDto {
   @IsString()
   message?: string;
 
-  @IsNotEmpty({ message: 'Debes ingresar tu contraseña de superadmin para confirmar el cambio de modo mantenimiento' })
+  @IsNotEmpty({
+    message:
+      'Debes ingresar tu contraseña de superadmin para confirmar el cambio de modo mantenimiento',
+  })
   @IsString()
   superadminPassword!: string;
 }

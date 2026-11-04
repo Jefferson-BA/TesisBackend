@@ -8,7 +8,7 @@ import { Role } from '../roles/entities/role.entity';
 import { Order } from '../orders/entities/order.entity';
 import { Reservation } from '../reservations/entities/reservation.entity';
 
-import { CulqiService } from '../payments/service/culqi.service';
+import { PaymentsModule } from '../payments/payments.module';
 
 import { SuperadminAuditService } from './audit/superadmin-audit.service';
 import { SuperadminAuditController } from './audit/superadmin-audit.controller';
@@ -24,6 +24,7 @@ import { SuperadminConfigController } from './config/superadmin-config.controlle
 
 @Module({
   imports: [
+    PaymentsModule,
     TypeOrmModule.forFeature([
       AuditLog,
       SystemConfig,
@@ -40,15 +41,11 @@ import { SuperadminConfigController } from './config/superadmin-config.controlle
     SuperadminConfigController,
   ],
   providers: [
-    CulqiService,
     SuperadminAuditService,
     SuperadminUsersService,
     SuperadminFinanceService,
     SuperadminConfigService,
   ],
-  exports: [
-    SuperadminAuditService,
-    SuperadminConfigService,
-  ],
+  exports: [SuperadminAuditService, SuperadminConfigService],
 })
 export class SuperadminModule {}

@@ -1,4 +1,10 @@
-import { IsNotEmpty, IsString, IsOptional, IsNumber, Min } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsString,
+  IsOptional,
+  IsNumber,
+  Min,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CulqiRefundDto {
@@ -16,7 +22,10 @@ export class CulqiRefundDto {
   @IsString()
   reason?: string = 'solicitud_comprador';
 
-  @IsNotEmpty({ message: 'Debes ingresar tu contraseña de superadmin para autorizar el reembolso' })
+  @IsNotEmpty({
+    message:
+      'Debes ingresar tu contraseña de superadmin para autorizar el reembolso',
+  })
   @IsString()
   superadminPassword!: string;
 }

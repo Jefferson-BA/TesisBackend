@@ -12,7 +12,6 @@ import { CartItem } from '../../cart/entities/cart-item.entity';
 
 @Entity('carts')
 export class Cart {
-
   @PrimaryGeneratedColumn()
   id!: number;
 

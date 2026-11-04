@@ -1,3 +1,4 @@
+import { instanceToPlain } from 'class-transformer';
 import {
   Injectable,
   NotFoundException,
@@ -47,7 +48,9 @@ export class SuperadminUsersService {
     });
 
     if (!superadmin) {
-      throw new NotFoundException('Usuario superadmin autenticado no encontrado.');
+      throw new NotFoundException(
+        'Usuario superadmin autenticado no encontrado.',
+      );
     }
 
     const isValid = await bcrypt.compare(providedPassword, superadmin.password);
@@ -100,7 +103,7 @@ export class SuperadminUsersService {
       .select('role.name', 'role')
       .addSelect('COUNT(user.id)', 'count')
       .groupBy('role.name')
-      .getRawMany();
+      .getRawMany<{ role: string; count: string }>();
 
     const formattedRoleStats: Record<string, number> = {
       superadmin: 0,
@@ -113,7 +116,7 @@ export class SuperadminUsersService {
 
     return {
       data: users.map((u) => {
-        const { password, ...safeUser } = u;
+        const safeUser = instanceToPlain(u);
         return safeUser;
       }),
       stats: formattedRoleStats,
@@ -141,7 +144,7 @@ export class SuperadminUsersService {
       throw new NotFoundException(`Usuario con ID #${id} no encontrado.`);
     }
 
-    const { password, ...safeUser } = user;
+    const safeUser = instanceToPlain(user);
     return {
       ...safeUser,
       ordersCount: user.orders ? user.orders.length : 0,
@@ -170,13 +173,15 @@ export class SuperadminUsersService {
     });
 
     if (!targetUser) {
-      throw new NotFoundException(`Usuario con ID #${targetUserId} no encontrado.`);
+      throw new NotFoundException(
+        `Usuario con ID #${targetUserId} no encontrado.`,
+      );
     }
 
     // 3. Prevenir auto-degradación si es el único superadmin
     if (
       targetUser.id === superadmin.id &&
-      dto.newRole.toLowerCase() !== RoleType.SUPERADMIN
+      dto.newRole !== RoleType.SUPERADMIN
     ) {
       const superadminCount = await this.userRepository
         .createQueryBuilder('u')
@@ -199,7 +204,9 @@ export class SuperadminUsersService {
     });
 
     if (!newRoleEntity) {
-      throw new NotFoundException(`Rol ${dto.newRole} no encontrado en el sistema.`);
+      throw new NotFoundException(
+        `Rol ${dto.newRole} no encontrado en el sistema.`,
+      );
     }
 
     targetUser.role = newRoleEntity;
@@ -222,7 +229,7 @@ export class SuperadminUsersService {
       },
     });
 
-    const { password, ...safeUser } = savedUser;
+    const safeUser = instanceToPlain(savedUser);
     return {
       success: true,
       message: `Rol del usuario #${targetUserId} actualizado exitosamente a ${dto.newRole}.`,
@@ -250,11 +257,15 @@ export class SuperadminUsersService {
     });
 
     if (!targetUser) {
-      throw new NotFoundException(`Usuario con ID #${targetUserId} no encontrado.`);
+      throw new NotFoundException(
+        `Usuario con ID #${targetUserId} no encontrado.`,
+      );
     }
 
     if (targetUser.id === superadmin.id && dto.isActive === false) {
-      throw new BadRequestException('No puedes suspender tu propia cuenta de superadmin.');
+      throw new BadRequestException(
+        'No puedes suspender tu propia cuenta de superadmin.',
+      );
     }
 
     const previousStatus = targetUser.isActive;
@@ -278,7 +289,7 @@ export class SuperadminUsersService {
       },
     });
 
-    const { password, ...safeUser } = savedUser;
+    const safeUser = instanceToPlain(savedUser);
     return {
       success: true,
       message: `Estado del usuario #${targetUserId} actualizado a: ${dto.isActive ? 'Activo' : 'Suspendido'}.`,
@@ -308,7 +319,9 @@ export class SuperadminUsersService {
     });
 
     if (!targetUser) {
-      throw new NotFoundException(`Usuario con ID #${targetUserId} no encontrado.`);
+      throw new NotFoundException(
+        `Usuario con ID #${targetUserId} no encontrado.`,
+      );
     }
 
     // Verificar email duplicado si cambia
@@ -317,7 +330,9 @@ export class SuperadminUsersService {
         where: { email: dto.email },
       });
       if (emailExists && emailExists.id !== targetUserId) {
-        throw new BadRequestException('El correo ingresado ya está en uso por otro usuario.');
+        throw new BadRequestException(
+          'El correo ingresado ya está en uso por otro usuario.',
+        );
       }
     }
 
@@ -358,7 +373,7 @@ export class SuperadminUsersService {
       },
     });
 
-    const { password, ...safeUser } = savedUser;
+    const safeUser = instanceToPlain(savedUser);
     return {
       success: true,
       message: `Perfil del usuario #${targetUserId} actualizado exitosamente.`,

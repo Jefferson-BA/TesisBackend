@@ -1,242 +1,218 @@
 import {
   Injectable,
   BadRequestException,
-  InternalServerErrorException,
-  NotFoundException
+  NotFoundException,
 } from '@nestjs/common';
 import { DataSource, In } from 'typeorm';
+import { instanceToPlain } from 'class-transformer';
 import { Reservation } from '../entities/reservation.entity';
 import { ReservationItem } from '../entities/reservation-item.entity';
 import { Product } from '../../products/entities/product.entity';
 import { CreateReservationDto } from '../dto/create-reservation.dto';
 import { UpdateReservationDto } from '../dto/update-reservation.dto';
 import { ReservationStatus } from '../enums/reservations.enums';
+import { PromotionsService } from '../../promotions/services/promotions.service';
+import { SettingsService } from '../../settings/settings.service';
+import { Order } from '../../orders/entities/order.entity';
+import { OrderStatus } from '../../orders/enums/order.enums';
+import { PaymentAttempt } from '../../payments/entities/payment-attempt.entity';
 
 @Injectable()
 export class ReservationsService {
-  constructor(private readonly dataSource: DataSource) { }
-
-  /**
-   * 🛒 CLIENTE: Registrar una nueva reserva utilizando Transacciones Atómicas
-   */
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly promotions: PromotionsService,
+    private readonly settings: SettingsService,
+  ) {}
   async createReservation(userId: number, dto: CreateReservationDto) {
-    const queryRunner = this.dataSource.createQueryRunner();
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
-
-    try {
-      let totalAmount = 0;
-      const reservationItems: ReservationItem[] = [];
-
-      // Validar cada producto/servicio solicitado en la reserva
+    if (
+      !dto.items.length ||
+      dto.items.some((i) => !Number.isInteger(i.quantity) || i.quantity < 1) ||
+      dto.guestsCount < 1
+    )
+      throw new BadRequestException('Cantidades invalidas');
+    if (new Set(dto.items.map((i) => i.productId)).size !== dto.items.length)
+      throw new BadRequestException('Agrupa los productos repetidos');
+    return this.dataSource.transaction(async (manager) => {
+      const products = await manager.find(Product, {
+        where: { id: In(dto.items.map((i) => i.productId)) },
+        relations: ['category'],
+      });
+      let subtotalCents = 0;
+      const items: ReservationItem[] = [];
       for (const item of dto.items) {
-        const product = await queryRunner.manager.findOne(Product, {
-          where: { id: item.productId },
-        });
-
-        if (!product) {
-          throw new BadRequestException(
-            `El servicio/producto con ID ${item.productId} no existe.`,
-          );
-        }
-
-        if (product.isAvailable === false) {
-          throw new BadRequestException(
-            `El servicio/producto '${product.name}' no se encuentra disponible actualmente.`,
-          );
-        }
-
-        // Acumular montos basados en el precio pactado al momento
-        totalAmount += Number(product.price) * item.quantity;
-
-        const resItem = queryRunner.manager.create(ReservationItem, {
-          productId: product.id,
-          quantity: item.quantity,
-          price: product.price,
-        });
-
-        reservationItems.push(resItem);
+        const product = products.find((p) => p.id === item.productId);
+        if (!product || !product.isActive || !product.isAvailable)
+          throw new BadRequestException('Producto no disponible');
+        const promotion = await this.promotions.findActivePromotionForProduct(
+          product.id,
+          product.category?.id,
+          manager,
+        );
+        const price = promotion
+          ? this.promotions.calculateDiscountedPrice(
+              Number(product.price),
+              promotion,
+              item.quantity,
+            )
+          : Number(product.price);
+        subtotalCents += Math.round(price * 100) * item.quantity;
+        items.push(
+          manager.create(ReservationItem, {
+            productId: product.id,
+            quantity: item.quantity,
+            price,
+          }),
+        );
       }
-
-      // Crear la cabecera de la reserva con estado inicial PENDING_REVIEW
-      const newReservation = queryRunner.manager.create(Reservation, {
+      const totals = await this.settings.totals(subtotalCents / 100, manager);
+      if (totals.subtotal < totals.minimum)
+        throw new BadRequestException('No se cumple el monto minimo');
+      const reservation = manager.create(Reservation, {
         userId,
-        eventDate: dto.eventDate,
+        eventDate: new Date(dto.eventDate),
         serviceStartTime: dto.serviceStartTime,
         guestsCount: dto.guestsCount,
         venueAddress: dto.venueAddress,
         city: dto.city,
         additionalNotes: dto.additionalNotes,
-        totalAmount,
+        totalAmount: totals.total,
         status: ReservationStatus.PENDING_REVIEW,
-        items: reservationItems,
+        items,
         termsAcceptedAt: dto.acceptedTerms ? new Date() : undefined,
         privacyAcceptedAt: dto.acceptedPrivacy ? new Date() : undefined,
       });
-
-      // Guardar en cascada (cabecera + items)
-      await queryRunner.manager.save(newReservation);
-      await queryRunner.commitTransaction();
-
-      return newReservation;
-    } catch (error) {
-      // En caso de cualquier error, se deshacen los cambios (Rollback)
-      await queryRunner.rollbackTransaction();
-
-      if (error instanceof BadRequestException) {
-        throw error;
-      }
-
-      throw new InternalServerErrorException(
-        'Error al registrar la reserva: ' + (error as Error).message,
-      );
-    } finally {
-      // Liberar siempre el hilo de conexión de la base de datos
-      await queryRunner.release();
-    }
+      return manager.save(reservation);
+    });
   }
-
-  /**
-   * 👤 CLIENTE: Listar el historial de reservas de la cuenta autenticada
-   */
-  async findAll(userId: number): Promise<Reservation[]> {
-    return await this.dataSource.getRepository(Reservation).find({
+  findAll(userId: number): Promise<Reservation[]> {
+    return this.dataSource.getRepository(Reservation).find({
       where: { userId },
       relations: ['items'],
       order: { id: 'DESC' },
+      take: 100,
     });
   }
-
-  /**
-   * ⚙️ ADMIN: Vista de monitoreo global con filtros dinámicos, relaciones pobladas y Paginación
-   */
-  async findAllAdmin(status?: string, page: number = 1, limit: number = 10) {
-    const whereClause: any = {};
-
-    if (status === 'active') {
-      whereClause.status = In([
-        ReservationStatus.PENDING_REVIEW,
-        ReservationStatus.APPROVED,
-        ReservationStatus.FULLY_PAID,
-      ]);
-    } else if (status) {
-      whereClause.status = status;
-    }
-
-    // 🧮 findAndCount devuelve un arreglo: [los_registros, el_total_absoluto]
-    const [reservations, total] = await this.dataSource.getRepository(Reservation).findAndCount({
-      where: whereClause,
-      relations: ['items', 'user', 'orders'],
-      order: { id: 'DESC' },
-      withDeleted: true,
-      skip: (page - 1) * limit, // 👈 Cuántos registros saltar
-      take: limit,              // 👈 Cuántos registros extraer (Límite por página)
-    });
-
-    const formattedData = reservations.map((res: any) => {
-      // 1. Buscamos el teléfono en la orden (asumiendo que 'orders' es un array por su nombre plural)
-      const orderPhone = res.orders && res.orders.length > 0 ? res.orders[0].phone : null;
-
-      if (res.user) {
-        const dbUser = res.user;
-        res.user = {
-          ...res.user,
-          name: dbUser.name || `${dbUser.firstName || ''} ${dbUser.lastName || ''}`.trim() || 'Cliente sin nombre',
-          email: dbUser.email,
-          // 2. Priorizamos el teléfono del usuario, si no hay, usamos el de la orden
-          phone: dbUser.phone || orderPhone || null,
-        };
-      }
-
-      // 3. Opción B del frontend: Lo exponemos directamente en la raíz de la reserva por comodidad
-      res.phone = orderPhone || (res.user?.phone) || null;
-
-      return res;
-    });
-
-    // 📦 Retornamos la estructura estándar con los datos y la Metadata
+  async findAllAdmin(status?: string, page = 1, limit = 10) {
+    if (
+      !Number.isInteger(page) ||
+      page < 1 ||
+      !Number.isInteger(limit) ||
+      limit < 1 ||
+      limit > 100
+    )
+      throw new BadRequestException('Paginacion invalida');
+    if (
+      status &&
+      status !== 'active' &&
+      !Object.values(ReservationStatus).includes(status as ReservationStatus)
+    )
+      throw new BadRequestException('Estado invalido');
+    const where =
+      status === 'active'
+        ? {
+            status: In([
+              ReservationStatus.PENDING_REVIEW,
+              ReservationStatus.APPROVED,
+              ReservationStatus.FULLY_PAID,
+            ]),
+          }
+        : status
+          ? { status: status as ReservationStatus }
+          : {};
+    const [reservations, total] = await this.dataSource
+      .getRepository(Reservation)
+      .findAndCount({
+        where,
+        relations: ['items', 'user', 'orders'],
+        order: { id: 'DESC' },
+        skip: (page - 1) * limit,
+        take: limit,
+      });
+    const data = reservations.map((res) => ({
+      ...instanceToPlain(res),
+      phone:
+        res.user?.phone ||
+        res.orders?.find((order) => order.phone)?.phone ||
+        null,
+    }));
     return {
-      data: formattedData,
+      data,
       meta: {
         totalItems: total,
-        itemCount: formattedData.length,
+        itemCount: data.length,
         itemsPerPage: limit,
         totalPages: Math.ceil(total / limit),
         currentPage: page,
       },
     };
   }
-
-  /**
-   * ⚙️ ADMIN/CLIENTE: Actualizar datos o estados de una reserva (PATCH)
-   */
-  async update(id: number, updateReservationDto: UpdateReservationDto) {
-    const reservationRepository = this.dataSource.getRepository(Reservation);
-
-    // Buscamos si existe el registro
-    const reservation = await reservationRepository.findOneBy({ id });
-
-    if (!reservation) {
-      throw new NotFoundException(
-        `La reserva con ID ${id} no existe.`,
-      );
-    }
-
-    // --- MÁQUINA DE ESTADOS / VALIDACIÓN DE TRANSICIÓN ---
-    if (updateReservationDto.status && updateReservationDto.status !== reservation.status) {
-      const currentStatus = reservation.status;
-      const newStatus = updateReservationDto.status;
-
-      if (currentStatus === ReservationStatus.COMPLETED || currentStatus === ReservationStatus.CANCELLED) {
-        throw new BadRequestException(`No se puede actualizar el estado de una reserva que ya está terminada (${currentStatus}).`);
+  async update(id: number, dto: UpdateReservationDto) {
+    return this.dataSource.transaction(async (manager) => {
+      const reservation = await manager.findOne(Reservation, {
+        where: { id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!reservation) throw new NotFoundException('Reserva no encontrada');
+      if (reservation.status === dto.status) return reservation;
+      const transitions: Record<ReservationStatus, ReservationStatus[]> = {
+        [ReservationStatus.PENDING_REVIEW]: [
+          ReservationStatus.APPROVED,
+          ReservationStatus.CANCELLED,
+        ],
+        [ReservationStatus.APPROVED]: [ReservationStatus.CANCELLED],
+        [ReservationStatus.FULLY_PAID]: [ReservationStatus.COMPLETED],
+        [ReservationStatus.COMPLETED]: [],
+        [ReservationStatus.CANCELLED]: [],
+      };
+      if (!transitions[reservation.status].includes(dto.status))
+        throw new BadRequestException(
+          'Transicion de reserva no permitida. El pago se confirma desde la pasarela.',
+        );
+      const orders = await manager.find(Order, {
+        where: { reservationId: id },
+      });
+      if (orders.length) {
+        const pending = await manager.findOne(PaymentAttempt, {
+          where: { orderId: In(orders.map((o) => o.id)), status: 'processing' },
+        });
+        if (pending)
+          throw new BadRequestException(
+            'Existe un pago pendiente de conciliacion',
+          );
       }
-
-      if (currentStatus === ReservationStatus.FULLY_PAID && newStatus !== ReservationStatus.COMPLETED) {
-        throw new BadRequestException(`Una reserva totalmente pagada (fully_paid) solo puede transicionar a completada (completed).`);
+      if (dto.status === ReservationStatus.CANCELLED) {
+        if (
+          orders.some((o) =>
+            [
+              OrderStatus.PAID,
+              OrderStatus.SHIPPED,
+              OrderStatus.DELIVERED,
+            ].includes(o.status),
+          )
+        )
+          throw new BadRequestException(
+            'La reserva pagada requiere un reembolso',
+          );
+        await manager.update(
+          Order,
+          {
+            reservationId: id,
+            status: In([OrderStatus.PENDING, OrderStatus.FAILED]),
+          },
+          { status: OrderStatus.CANCELLED },
+        );
       }
-    }
-
-    // Fusionamos los cambios que vienen del DTO (ya normalizados a minúsculas)
-    Object.assign(reservation, updateReservationDto);
-
-    return await reservationRepository.save(reservation);
-  }
-
-  /**
-   * ⚙️ ADMIN: Eliminar físicamente una reserva de la base de datos
-   */
-  async remove(id: number) {
-    const reservationRepository = this.dataSource.getRepository(Reservation);
-
-    const result = await reservationRepository.delete(id);
-
-    if (result.affected === 0) {
-      throw new NotFoundException(
-        `La reserva con ID ${id} no existe.`,
-      );
-    }
-
-    return {
-      message: `Reserva ${id} eliminada correctamente.`,
-    };
-  }
-
-  /**
-   * ⚙️ ADMIN: Endpoint rápido para aprobar de forma directa una revisión
-   */
-  async approveReservation(id: number): Promise<Reservation> {
-    const reservationRepository = this.dataSource.getRepository(Reservation);
-
-    const reservation = await reservationRepository.findOne({
-      where: { id },
+      reservation.status = dto.status;
+      return manager.save(reservation);
     });
-
-    if (!reservation) {
-      throw new NotFoundException('Reserva no encontrada');
-    }
-
-    reservation.status = ReservationStatus.APPROVED;
-
-    return await reservationRepository.save(reservation);
+  }
+  async remove(id: number) {
+    // Preserve reservation history rather than physically deleting financial records.
+    await this.update(id, { status: ReservationStatus.CANCELLED });
+    return { message: 'Reserva cancelada; historial conservado' };
+  }
+  approveReservation(id: number) {
+    return this.update(id, { status: ReservationStatus.APPROVED });
   }
 }

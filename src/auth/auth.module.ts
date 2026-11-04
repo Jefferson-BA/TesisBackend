@@ -20,7 +20,7 @@ import { RolesModule } from '../roles/roles.module';
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
         // Idealmente, esto debe venir del .env (ej. JWT_SECRET=mi_super_secreto)
-        secret: configService.get<string>('JWT_SECRET', 'clave-secreta-temporal'),
+        secret: configService.getOrThrow<string>('JWT_SECRET'),
         signOptions: { expiresIn: '1d' }, // El token expira en 1 día
       }),
     }),
@@ -28,4 +28,4 @@ import { RolesModule } from '../roles/roles.module';
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy],
 })
-export class AuthModule { }
+export class AuthModule {}

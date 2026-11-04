@@ -15,7 +15,7 @@ export class CartService {
     private readonly cartItemRepository: Repository<CartItem>,
 
     // 👈 Cambiamos el Repositorio por tu Servicio ya existente
-    private readonly productsService: ProductsService, 
+    private readonly productsService: ProductsService,
   ) {}
 
   // 🛠️ Función auxiliar: Busca el carrito del usuario o lo crea si es nuevo
@@ -35,12 +35,14 @@ export class CartService {
   // ➕ Agregar producto al carrito
   async addItemToCart(userId: number, productId: string, quantity: number) {
     // 👈 Ahora usamos el servicio para buscar el producto (asumiendo que se llama findOne o findOneById)
-    const product = await this.productsService.findOne(productId); 
+    const product = await this.productsService.findOne(productId);
     if (!product) throw new NotFoundException('Producto no encontrado');
 
     const cart = await this.findOrCreateCart(userId);
 
-    const existingItem = cart.items.find((item) => item.product.id === productId);
+    const existingItem = cart.items.find(
+      (item) => item.product.id === productId,
+    );
 
     if (existingItem) {
       existingItem.quantity += quantity;
@@ -58,12 +60,16 @@ export class CartService {
   }
 
   // ✏️ Actualizar cantidad exacta
-  async updateItemQuantity(userId: number, productId: string, quantity: number) {
+  async updateItemQuantity(
+    userId: number,
+    productId: string,
+    quantity: number,
+  ) {
     const cart = await this.findOrCreateCart(userId);
     const item = cart.items.find((item) => item.product.id === productId);
-    
+
     if (!item) throw new NotFoundException('El producto no está en tu carrito');
-    
+
     item.quantity = quantity;
     await this.cartItemRepository.save(item);
     return this.findOrCreateCart(userId);

@@ -1,3 +1,4 @@
+import type { AuthenticatedRequest } from '../../auth/interfaces/authenticated-request.interface';
 import {
   Controller,
   Get,
@@ -58,7 +59,7 @@ export class SuperadminConfigController {
   update(
     @Param('key') key: string,
     @Body() dto: UpdateSystemConfigDto,
-    @Req() req: any,
+    @Req() req: AuthenticatedRequest,
   ) {
     const clientInfo = getClientInfo(req);
     return this.configService.update(key, req.user.id, dto, clientInfo);
@@ -70,7 +71,10 @@ export class SuperadminConfigController {
   @Post('maintenance-mode/toggle')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles('SUPERADMIN')
-  toggleMaintenance(@Body() dto: ToggleMaintenanceDto, @Req() req: any) {
+  toggleMaintenance(
+    @Body() dto: ToggleMaintenanceDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
     const clientInfo = getClientInfo(req);
     return this.configService.toggleMaintenance(req.user.id, dto, clientInfo);
   }

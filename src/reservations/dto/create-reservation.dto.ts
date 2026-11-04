@@ -7,16 +7,21 @@ import {
   IsArray,
   ValidateNested,
   Equals,
+  Min,
+  ArrayMinSize,
+  ArrayMaxSize,
+  IsUUID,
 } from 'class-validator';
 
 import { Type } from 'class-transformer';
 
 class ReservationItemDto {
-  @IsString()
+  @IsUUID()
   @IsNotEmpty()
   productId!: string;
 
   @IsInt()
+  @Min(1)
   @IsNotEmpty()
   quantity!: number;
 }
@@ -31,6 +36,7 @@ export class CreateReservationDto {
   serviceStartTime!: string;
 
   @IsInt()
+  @Min(1)
   @IsNotEmpty()
   guestsCount!: number;
 
@@ -47,6 +53,8 @@ export class CreateReservationDto {
   additionalNotes?: string;
 
   @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
   @ValidateNested({ each: true })
   @Type(() => ReservationItemDto)
   items!: ReservationItemDto[];

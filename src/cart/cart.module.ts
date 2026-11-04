@@ -3,9 +3,9 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { CartService } from './service/cart.service';
 import { CartController } from './controller/cart.controller';
 // 👇 Asegúrate de importar tus entidades del carrito
-import { Cart } from './entities/cart.entity'; 
+import { Cart } from './entities/cart.entity';
 import { CartItem } from './entities/cart-item.entity'; // (Si tienes esta entidad)
-import { ProductsModule } from 'src/products/products.module';
+import { ProductsModule } from '../products/products.module';
 
 @Module({
   // 👇 AQUÍ ESTÁ LA MAGIA QUE FALTA

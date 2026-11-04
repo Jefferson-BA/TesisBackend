@@ -1,4 +1,8 @@
-import { Injectable, UnauthorizedException, InternalServerErrorException } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 
 import { UsersService } from '../../users/services/users.service';
@@ -13,8 +17,8 @@ export class AuthService {
   constructor(
     private readonly usersService: UsersService,
     private readonly rolesService: RolesService,
-    private readonly jwtService: JwtService, 
-  ) { }
+    private readonly jwtService: JwtService,
+  ) {}
 
   // ==========================
   // REGISTRO DE USUARIO
@@ -23,12 +27,14 @@ export class AuthService {
     const role = await this.rolesService.findByName(RoleType.USER);
 
     if (!role) {
-      throw new InternalServerErrorException('Los roles no han sido inicializados en la base de datos');
+      throw new InternalServerErrorException(
+        'Los roles no han sido inicializados en la base de datos',
+      );
     }
 
     // 🟢 EXCELENTE: El operador spread (...) arrastra name, email, password Y EL PHONE de forma automática
     const newUser = await this.usersService.create({
-      ...signupDto,    
+      ...signupDto,
       roleId: role.id,
       termsAcceptedAt: signupDto.acceptedTerms ? new Date() : undefined,
       privacyAcceptedAt: signupDto.acceptedPrivacy ? new Date() : undefined,
@@ -40,18 +46,33 @@ export class AuthService {
     };
   }
 
+  async getProfile(userId: number) {
+    const user = await this.usersService.findActiveById(userId);
+    if (!user) throw new UnauthorizedException('La cuenta no está disponible');
+    return {
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role.name,
+        phone: user.phone || '',
+        address: user.address || '',
+      },
+    };
+  }
+
   // ==========================
   // INICIO DE SESIÓN
   // ==========================
   async login(loginDto: LoginDto) {
     const user = await this.usersService.findOneByEmail(loginDto.email);
-    
-    if (!user) {
+
+    if (!user || !user.isActive) {
       throw new UnauthorizedException('Correo o contraseña incorrectos');
     }
 
     const isPasswordValid = await user.comparePassword(loginDto.password);
-    
+
     if (!isPasswordValid) {
       throw new UnauthorizedException('Correo o contraseña incorrectos');
     }
@@ -59,9 +80,9 @@ export class AuthService {
     const userRoleName = user.role?.name || 'user';
 
     const payload = {
-      sub: user.id, 
+      sub: user.id,
       email: user.email,
-      role: userRoleName, 
+      role: userRoleName,
     };
 
     return {
@@ -71,8 +92,8 @@ export class AuthService {
         name: user.name,
         email: user.email,
         role: userRoleName,
-        phone: (user as any).phone || "", // 🟢 AGREGADO: Mandamos el teléfono también en el Login para que el Frontend lo guarde en la sesión inmediatamente
-      }
+        phone: user.phone || '',
+      },
     };
   }
 }

@@ -4,7 +4,9 @@ import {
   IsEnum,
   IsArray,
   ValidateNested,
-  IsNumber,
+  IsInt,
+  Min,
+  ArrayMaxSize,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -32,11 +34,13 @@ export class CreateOrderDto {
   @IsOptional()
   paymentMethod?: PaymentMethod;
 
-  @IsNumber()
+  @IsInt()
+  @Min(1)
   @IsOptional()
   reservationId?: number;
 
   @IsArray()
+  @ArrayMaxSize(100)
   @IsOptional() // 👈 Ahora es opcional
   @ValidateNested({ each: true })
   @Type(() => CreateOrderItemDto)

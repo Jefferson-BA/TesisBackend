@@ -1,4 +1,9 @@
-import { Injectable, BadRequestException, OnModuleInit, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  OnModuleInit,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Role } from '../entities/role.entity';
@@ -6,13 +11,12 @@ import { CreateRoleDto } from '../dto/create-role.dto';
 import { UpdateRoleDto } from '../dto/update-role.dto';
 import { RoleType } from '../enums/role-type.enum';
 
-
 @Injectable()
-export class RolesService {
+export class RolesService implements OnModuleInit {
   constructor(
     @InjectRepository(Role)
     private readonly roleRepository: Repository<Role>,
-  ) { }
+  ) {}
 
   // 👇 AGREGA ESTE MÉTODO PARA SOLUCIONAR EL ERROR
 
@@ -24,7 +28,9 @@ export class RolesService {
     const roles = [RoleType.SUPERADMIN, RoleType.ADMIN, RoleType.USER];
 
     for (const roleName of roles) {
-      const roleExists = await this.roleRepository.findOne({ where: { name: roleName } });
+      const roleExists = await this.roleRepository.findOne({
+        where: { name: roleName },
+      });
       if (!roleExists) {
         const newRole = this.roleRepository.create({ name: roleName });
         await this.roleRepository.save(newRole);
@@ -34,8 +40,11 @@ export class RolesService {
   }
 
   async create(createRoleDto: CreateRoleDto) {
-    const roleExists = await this.roleRepository.findOne({ where: { name: createRoleDto.name } });
-    if (roleExists) throw new BadRequestException(`El rol ${createRoleDto.name} ya existe`);
+    const roleExists = await this.roleRepository.findOne({
+      where: { name: createRoleDto.name },
+    });
+    if (roleExists)
+      throw new BadRequestException(`El rol ${createRoleDto.name} ya existe`);
 
     const newRole = this.roleRepository.create(createRoleDto);
     return await this.roleRepository.save(newRole);
@@ -53,7 +62,7 @@ export class RolesService {
 
   async update(id: number, updateRoleDto: UpdateRoleDto) {
     const role = await this.findOne(id);
-    this.roleRepository.merge(role, updateRoleDto as any);
+    this.roleRepository.merge(role, updateRoleDto);
     return await this.roleRepository.save(role);
   }
 

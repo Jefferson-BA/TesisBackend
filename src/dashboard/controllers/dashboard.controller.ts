@@ -14,4 +14,4 @@ export class DashboardController {
   getStats() {
     return this.dashboardService.getDashboardStats();
   }
-}
+}

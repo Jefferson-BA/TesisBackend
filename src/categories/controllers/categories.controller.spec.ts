@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { CategoriesController } from './categories.controller';
-import { CategoriesService } from './categories.service';
+import { CategoriesService } from '../services/categories.service';
 
 describe('CategoriesController', () => {
   let controller: CategoriesController;
@@ -9,7 +9,9 @@ describe('CategoriesController', () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [CategoriesController],
       providers: [CategoriesService],
-    }).compile();
+    })
+      .useMocker(() => ({}))
+      .compile();
 
     controller = module.get<CategoriesController>(CategoriesController);
   });

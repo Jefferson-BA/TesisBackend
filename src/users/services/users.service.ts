@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../entities/user.entity';
@@ -6,6 +10,7 @@ import { CreateUserDto } from '../dto/create-user.dto';
 import { UpdateUserDto } from '../dto/update-user.dto';
 import { PaginationDto } from '../../common/dtos/pagination.dto'; // 👈 agregado
 import { Role } from '../../roles/entities/role.entity';
+import { RoleType } from '../../roles/enums/role-type.enum';
 
 @Injectable()
 export class UsersService {
@@ -17,10 +22,18 @@ export class UsersService {
   ) {}
 
   async create(createUserDto: CreateUserDto) {
-    const userExists = await this.userRepository.findOne({ where: { email: createUserDto.email } });
-    if (userExists) throw new BadRequestException('El correo ya está registrado');
+    const userExists = await this.userRepository.findOne({
+      where: { email: createUserDto.email },
+    });
+    if (userExists)
+      throw new BadRequestException('El correo ya está registrado');
 
-    const role = await this.roleRepository.findOne({ where: { id: createUserDto.roleId } });
+    const role = await this.roleRepository.findOne({
+      where:
+        createUserDto.roleId === undefined
+          ? { name: RoleType.USER }
+          : { id: createUserDto.roleId },
+    });
     if (!role) throw new NotFoundException('Rol no encontrado');
 
     const newUser = this.userRepository.create({
@@ -53,7 +66,8 @@ export class UsersService {
 
   async findOne(id: number) {
     const user = await this.userRepository.findOne({ where: { id } });
-    if (!user) throw new NotFoundException(`Usuario con ID ${id} no encontrado`);
+    if (!user)
+      throw new NotFoundException(`Usuario con ID ${id} no encontrado`);
     return user;
   }
 
@@ -61,9 +75,13 @@ export class UsersService {
     return await this.userRepository.findOne({ where: { email } });
   }
 
+  findActiveById(id: number) {
+    return this.userRepository.findOne({ where: { id, isActive: true } });
+  }
+
   async update(id: number, updateUserDto: UpdateUserDto) {
     const user = await this.findOne(id);
-    this.userRepository.merge(user, updateUserDto as any);
+    this.userRepository.merge(user, updateUserDto);
     return await this.userRepository.save(user);
   }
 

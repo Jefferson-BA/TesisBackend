@@ -1,3 +1,4 @@
+import { PromotionsModule } from '../promotions/promotions.module';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm'; // 👈 AGREGADO
 import { ReservationsService } from './service/reservations.service';
@@ -7,6 +8,7 @@ import { ReservationItem } from './entities/reservation-item.entity'; // 👈 AG
 
 @Module({
   imports: [
+    PromotionsModule,
     // 🟢 Esto le dice a TypeORM que registre estas tablas en la Base de Datos
     TypeOrmModule.forFeature([Reservation, ReservationItem]),
   ],
